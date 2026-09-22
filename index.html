@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SmartCart IoT - Real-time Shopping System</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- External Libraries (CDNs) -->
+  <!-- html5-qrcode for Camera QR Scanning -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <!-- Stripe JS SDK -->
+  <script src="https://js.stripe.com/v3/"></script>
+</head>
+<body>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- App Wrapper -->
+  <div class="app-wrapper">
+
+    <!-- VIEW 1: WELCOME & CART PAIRING SCREEN -->
+    <section id="view-pairing" class="view view-active">
+      <header class="app-brand-header">
+        <div class="brand-logo">
+          <div class="logo-icon"><i class="fa-solid fa-cart-shopping"></i></div>
+          <div class="brand-titles">
+            <h1>SmartCart <span class="badge-iot"><i class="fa-solid fa-wifi"></i> IoT</span></h1>
+            <p>FreshCart Supermarket Express</p>
+          </div>
+        </div>
+        <div class="system-status">
+          <span class="pulse-dot active"></span>
+          <span class="status-text">Station Gateway Online</span>
+        </div>
+      </header>
+
+      <main class="pairing-container">
+        <div class="hero-card glass-panel">
+          <div class="hero-icon-wrapper">
+            <i class="fa-solid fa-qrcode hero-qr-icon"></i>
+            <div class="pulse-ring"></div>
+          </div>
+          <h2>Pair Your Shopping Cart</h2>
+          <p class="hero-desc">Scan the QR code on your cart handle to sync real-time RFID item scanning and smart billing.</p>
+
+          <div class="pairing-actions">
+            <button id="btn-start-qr" class="btn btn-primary btn-lg btn-glow">
+              <i class="fa-solid fa-camera"></i> Scan Cart QR Code
+            </button>
+            
+            <div class="divider">
+              <span>OR ENTER MANUALLY FOR TESTING</span>
+            </div>
+
+            <div class="manual-input-group">
+              <div class="input-with-icon">
+                <i class="fa-solid fa-barcode"></i>
+                <input type="text" id="input-cart-id" placeholder="e.g. CART_004" autocomplete="off" spellcheck="false" value="CART_004">
+              </div>
+              <button id="btn-pair-manual" class="btn btn-secondary">
+                <i class="fa-solid fa-link"></i> Pair Cart
+              </button>
+            </div>
+
+            <div class="quick-preset-carts">
+              <span class="preset-label">Quick Test IDs:</span>
+              <button class="chip-btn" data-cart="CART_001">CART_001</button>
+              <button class="chip-btn" data-cart="CART_004">CART_004</button>
+              <button class="chip-btn" data-cart="CART_042">CART_042</button>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- QR Scanner Camera Modal -->
+      <div id="qr-modal" class="modal-overlay hidden">
+        <div class="modal-card glass-panel">
+          <div class="modal-header">
+            <h3><i class="fa-solid fa-qrcode"></i> Scan Cart Handle QR</h3>
+            <button id="btn-close-qr" class="btn-icon" aria-label="Close scanner"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <div class="modal-body">
+            <div id="qr-reader" class="qr-viewfinder"></div>
+            <p class="qr-hint">Position cart QR code inside frame</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- VIEW 2: ACTIVE SHOPPING & LIVE CART DASHBOARD -->
+    <section id="view-cart" class="view hidden">
+      <header class="active-cart-header glass-panel">
+        <div class="cart-info">
+          <div class="cart-badge-chip">
+            <i class="fa-solid fa-cart-shopping"></i>
+            <span id="paired-cart-id-display">Cart #04</span>
+          </div>
+          <div id="connection-status-badge" class="connection-status online">
+            <span class="status-dot"></span>
+            <span class="connection-text">Live RFID Active</span>
+          </div>
+        </div>
+
+        <button id="btn-disconnect" class="btn btn-ghost btn-sm" title="Unpair cart">
+          <i class="fa-solid fa-arrow-right-from-bracket"></i> Unpair
+        </button>
+      </header>
+
+      <main class="dashboard-main">
+        
+        <!-- Live Itemized Cart Stream -->
+        <section class="cart-feed-section">
+          <div class="section-title-bar">
+            <h2>Scanned Items <span id="cart-item-count-badge" class="item-count-pill">0 items</span></h2>
+            <span class="rfid-pulse-indicator"><i class="fa-solid fa-radio"></i> RFID Listener Active</span>
+          </div>
+
+          <!-- Empty Cart Placeholder -->
+          <div id="empty-cart-state" class="empty-state glass-panel">
+            <div class="empty-icon"><i class="fa-solid fa-basket-shopping"></i></div>
+            <h3>Your Cart is Empty</h3>
+            <p>Drop items tagged with RFID into your cart. They will appear here in real-time with subtotal calculations.</p>
+            <div class="empty-tip">
+              <i class="fa-solid fa-lightbulb"></i> Use the <strong>ESP32 Simulation Panel</strong> below to scan sample items!
+            </div>
+          </div>
+
+          <!-- Cart Items Container -->
+          <div id="cart-items-container" class="cart-items-list hidden">
+            <!-- Dynamic item cards appended here via JS -->
+          </div>
+        </section>
+
+        <!-- Sticky Price Summary & Checkout Action Panel -->
+        <section class="cart-summary-section glass-panel">
+          <!-- Station Return Status Banner -->
+          <div id="station-status-banner" class="station-banner in-aisle">
+            <div class="banner-icon">
+              <i id="station-icon" class="fa-solid fa-cart-flatbed-suitcases"></i>
+            </div>
+            <div class="banner-content">
+              <span class="banner-subtitle">Station Detection Status</span>
+              <strong id="station-status-text">In Aisle / Roaming 🛒</strong>
+            </div>
+            <div class="banner-badge" id="station-badge">Roaming</div>
+          </div>
+
+          <!-- Financial Breakdown Table -->
+          <div class="price-breakdown">
+            <div class="price-row">
+              <span>Subtotal (excl. VAT)</span>
+              <span id="summary-subtotal" class="price-value">R 0.00</span>
+            </div>
+            <div class="price-row">
+              <span>VAT / Tax (15%)</span>
+              <span id="summary-vat" class="price-value">R 0.00</span>
+            </div>
+            <div class="price-row total-row">
+              <span>Total Payable (ZAR)</span>
+              <strong id="summary-total" class="total-amount">R 0.00</strong>
+            </div>
+          </div>
+
+          <!-- Checkout Trigger Button -->
+          <div class="checkout-action-wrapper" id="checkout-wrapper">
+            <button id="btn-checkout" class="btn btn-primary btn-block btn-lg btn-locked" disabled>
+              <i class="fa-solid fa-lock" id="checkout-btn-icon"></i>
+              <span id="checkout-btn-text">Return Cart to Base Station to Pay</span>
+            </button>
+            <p id="checkout-tooltip" class="checkout-tooltip">
+              <i class="fa-solid fa-triangle-exclamation"></i> Cart must be docked at the checkout base station to unlock Stripe payment.
+            </p>
+          </div>
+        </section>
+      </main>
+    </section>
+
+
+    <!-- VIEW 3: STRIPE PAYMENT MODAL / CHECKOUT VIEW -->
+    <div id="modal-payment" class="modal-overlay hidden">
+      <div class="modal-card payment-modal-card glass-panel">
+        <div class="modal-header">
+          <div class="payment-title">
+            <i class="fa-brands fa-stripe stripe-brand-icon"></i>
+            <h3>Secure Checkout</h3>
+          </div>
+          <button id="btn-close-payment" class="btn-icon" aria-label="Cancel checkout"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="payable-summary-box">
+            <span class="box-label">Final Amount Due</span>
+            <span id="payment-total-display" class="payable-total">R 0.00</span>
+            <span class="currency-tag">ZAR • South African Rand</span>
+          </div>
+
+          <form id="payment-form" class="stripe-form">
+            <div class="form-group">
+              <label for="card-element"><i class="fa-solid fa-credit-card"></i> Card Details</label>
+              <!-- Stripe Card Element Mount Point -->
+              <div id="card-element" class="stripe-input-container">
+                <!-- Fallback / Interactive Card Input rendered here if offline/stubbed -->
+              </div>
+              <div id="card-errors" class="card-errors-container" role="alert"></div>
+            </div>
+
+            <div class="security-note">
+              <i class="fa-solid fa-shield-halved"></i> Encrypted end-to-end via Stripe 256-bit TLS Gateway.
+            </div>
+
+            <button id="btn-pay-now" type="submit" class="btn btn-success btn-block btn-lg btn-glow">
+              <span id="pay-btn-spinner" class="spinner hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+              <span id="pay-btn-text"><i class="fa-solid fa-lock"></i> Authorize & Pay <strong id="pay-btn-total-val">R 0.00</strong></span>
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- VIEW 4: POST-PAYMENT CONFIRMATION & RECEIPT -->
+    <div id="modal-receipt" class="modal-overlay hidden">
+      <div class="modal-card receipt-modal-card glass-panel">
+        <div class="modal-body receipt-body">
+          
+          <!-- Animated Checkmark -->
+          <div class="success-animation">
+            <div class="checkmark-circle">
+              <i class="fa-solid fa-check"></i>
+            </div>
+          </div>
+
+          <h2>Payment Successful!</h2>
+          <p class="receipt-subtitle">Thank you for shopping at FreshCart Supermarket.</p>
+
+          <div class="receipt-paper">
+            <div class="receipt-header">
+              <div class="receipt-logo">FreshCart IoT</div>
+              <div id="receipt-order-ref" class="receipt-ref">REF: #ORD-8942-ZAR</div>
+              <div id="receipt-timestamp" class="receipt-date">2026-08-28 12:57</div>
+            </div>
+
+            <hr class="receipt-divider">
+
+            <div id="receipt-items-list" class="receipt-items">
+              <!-- Itemized line items populated by JS -->
+            </div>
+
+            <hr class="receipt-divider">
+
+            <div class="receipt-totals">
+              <div class="receipt-row">
+                <span>Subtotal</span>
+                <span id="receipt-subtotal">R 0.00</span>
+              </div>
+              <div class="receipt-row">
+                <span>VAT (15%)</span>
+                <span id="receipt-vat">R 0.00</span>
+              </div>
+              <div class="receipt-row total-row">
+                <span>Paid via Card</span>
+                <strong id="receipt-total">R 0.00</strong>
+              </div>
+            </div>
+
+            <div class="receipt-footer">
+              <i class="fa-solid fa-barcode"></i>
+              <span>Gate Clearance Verification Authorized</span>
+            </div>
+          </div>
+
+          <button id="btn-finish-reset" class="btn btn-primary btn-block btn-lg">
+            <i class="fa-solid fa-arrow-rotate-right"></i> Finish Shopping & Reset Cart
+          </button>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ESP32 SIMULATION / DEBUG DOCK PANEL -->
+    <aside id="debug-panel" class="debug-panel collapsed">
+      <div class="debug-handle" id="debug-handle">
+        <div class="handle-title">
+          <i class="fa-solid fa-microchip"></i>
+          <span>ESP32 Hardware RFID Simulator & Dock Trigger</span>
+        </div>
+        <button id="btn-toggle-debug" class="btn-debug-toggle">
+          <span id="debug-toggle-text">Expand Controls</span>
+          <i class="fa-solid fa-chevron-up" id="debug-chevron"></i>
+        </button>
+      </div>
+
+      <div class="debug-content">
+        <div class="debug-grid">
+          
+          <!-- Station Dock Toggle -->
+          <div class="debug-box">
+            <h4><i class="fa-solid fa-charging-station"></i> Base Station Proximity</h4>
+            <button id="sim-btn-toggle-dock" class="btn btn-warning btn-block">
+              <i class="fa-solid fa-plug"></i> <span id="sim-dock-text">Simulate Station Docking (Unlock Pay)</span>
+            </button>
+            <p class="debug-hint">Sends <code>station_docked: true</code> MQTT event to server</p>
+          </div>
+
+          <!-- Quick RFID Add Actions -->
+          <div class="debug-box">
+            <h4><i class="fa-solid fa-wifi"></i> Scan RFID Tags (Add Items)</h4>
+            <div class="sim-items-buttons">
+              <button class="sim-add-btn" data-sku="MILK-001" data-name="Organic Fresh Milk 2L" data-price="32.50">
+                + Milk (R32.50)
+              </button>
+              <button class="sim-add-btn" data-sku="BREAD-002" data-name="Artisan Sourdough Bread" data-price="24.00">
+                + Bread (R24.00)
+              </button>
+              <button class="sim-add-btn" data-sku="APPLE-003" data-name="Crisp Red Apples 1kg" data-price="45.00">
+                + Apples (R45.00)
+              </button>
+              <button class="sim-add-btn" data-sku="STEAK-004" data-name="A-Grade Ribeye Steak 500g" data-price="185.00">
+                + Ribeye (R185.00)
+              </button>
+              <button class="sim-add-btn" data-sku="WATER-005" data-name="Still Mineral Water 6-Pack" data-price="55.00">
+                + Water (R55.00)
+              </button>
+              <button class="sim-add-btn" data-sku="COFFEE-006" data-name="Espresso Coffee Beans 500g" data-price="120.00">
+                + Coffee (R120.00)
+              </button>
+            </div>
+          </div>
+
+          <!-- Quick Presets -->
+          <div class="debug-box">
+            <h4><i class="fa-solid fa-sliders"></i> Test Presets & Actions</h4>
+            <div class="sim-presets-group">
+              <button id="sim-preset-quick" class="btn btn-secondary btn-sm">Preset 1: Quick Grocery</button>
+              <button id="sim-preset-trolley" class="btn btn-secondary btn-sm">Preset 2: Full Trolley</button>
+              <button id="sim-remove-random" class="btn btn-danger btn-sm">- Remove Last Item</button>
+              <button id="sim-clear-all" class="btn btn-ghost btn-sm"><i class="fa-solid fa-trash-can"></i> Clear Cart</button>
+            </div>
+          </div>
+
+          <!-- Raw MQTT JSON Event Logger -->
+          <div class="debug-box debug-box-wide">
+            <h4><i class="fa-solid fa-terminal"></i> ESP32 Raw Telemetry Stream</h4>
+            <div id="debug-event-log" class="raw-log-console">
+              <div class="log-line info">[System] ESP32 MQTT Websocket listener initialized on port 8883...</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- Main JavaScript Logic -->
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+// Prisma Database Schema for IoT Smart Shopping Cart System
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Product Inventory Catalog
+model Product {
+  id            String     @id @default(uuid())
+  rfidTagId     String     @unique @map("rfid_tag_id")
+  name          String
+  priceCents    Int        @map("price_cents") // Amount in ZAR Cents (e.g., 3250 = R32.50)
+  stockQuantity Int        @default(100) @map("stock_quantity")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  cartItems     CartItem[]
+
+  @@map("products")
+}
+
+// Physical Shopping Cart Entity
+model Cart {
+  id             String        @id // e.g. "CART_001", "CART_004"
+  stationRfidTag String        @unique @map("station_rfid_tag") // RFID tag attached to cart base
+  status         String        @default("available") // "available", "active", "docked"
+  lastDockedAt   DateTime?     @map("last_docked_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  sessions       CartSession[]
+
+  @@map("carts")
+}
+
+// Active Shopping Session for a Customer
+model CartSession {
+  id            String        @id @default(uuid())
+  cartId        String        @map("cart_id")
+  cart          Cart          @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  isActive      Boolean       @default(true) @map("is_active")
+  isDocked      Boolean       @default(false) @map("is_docked")
+  subtotalCents Int           @default(0) @map("subtotal_cents")
+  taxCents      Int           @default(0) @map("tax_cents") // 15% VAT in ZAR Cents
+  totalCents    Int           @default(0) @map("total_cents")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  closedAt      DateTime?     @map("closed_at")
+  items         CartItem[]
+  transactions  Transaction[]
+
+  @@map("cart_sessions")
+}
+
+// Scanned Line Items in a Session
+model CartItem {
+  id             String      @id @default(uuid())
+  sessionId      String      @map("session_id")
+  session        CartSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  productId      String      @map("product_id")
+  product        Product     @relation(fields: [productId], references: [id])
+  quantity       Int         @default(1)
+  unitPriceCents Int         @map("unit_price_cents")
+  subtotalCents  Int         @map("subtotal_cents")
+
+  @@unique([sessionId, productId])
+  @@map("cart_items")
+}
+
+// Financial Payment Transaction Record
+model Transaction {
+  id                    String      @id @default(uuid())
+  sessionId             String      @map("session_id")
+  session               CartSession @relation(fields: [sessionId], references: [id])
+  stripePaymentIntentId String      @unique @map("stripe_payment_intent_id")
+  amountCents           Int         @map("amount_cents")
+  currency              String      @default("ZAR")
+  status                String      @default("succeeded") // "pending", "succeeded", "failed"
+  createdAt             DateTime    @default(now()) @map("created_at")
+
+  @@map("transactions")
+}

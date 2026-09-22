@@ -13,6 +13,11 @@ const sql = neon(process.env.DATABASE_URL);
 app.use(express.json());
 app.use(express.static(path.join(__dirname))); // Serve your existing index.html, style.css, app.js
 
+// Explicitly serve index.html at the root
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // --- API ENDPOINT FOR THE ESP32 ---
 app.post('/api/scan', async (req, res) => {
   try {

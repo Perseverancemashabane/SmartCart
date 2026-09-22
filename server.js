@@ -4,21 +4,21 @@ const { neon } = require('@neondatabase/serverless');
 const path = require('path');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Connect to Neon database
 const sql = neon(process.env.DATABASE_URL);
 
 // Middleware
 app.use(express.json());
-app.use(express.static(path.join(__dirname))); // Serve your existing index.html, style.css, app.js
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Explicitly serve index.html at the root
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// --- API ENDPOINT FOR THE ESP32 ---
+// --- ESP32 SCANS A TAG ---
 app.post('/api/scan', async (req, res) => {
   try {
     const { tag_uid } = req.body;
@@ -27,16 +27,26 @@ app.post('/api/scan', async (req, res) => {
       return res.status(400).json({ error: 'tag_uid is required' });
     }
 
-    // Look up the item in the Neon database
+    // Look up the item in the items table
     const result = await sql`
       SELECT name, price FROM items WHERE tag_uid = ${tag_uid}
     `;
 
     if (result.length === 0) {
+      // Still log the scan even if not found
+      await sql`
+        INSERT INTO scans (tag_uid, name, price) 
+        VALUES (${tag_uid}, 'Unknown', 0)
+      `;
       return res.json({ found: false, message: 'Item not found' });
     }
 
-    // Send back the name and price
+    // Log the scan
+    await sql`
+      INSERT INTO scans (tag_uid, name, price) 
+      VALUES (${tag_uid}, ${result[0].name}, ${result[0].price})
+    `;
+
     return res.json({ found: true, item: result[0] });
 
   } catch (error) {
@@ -45,8 +55,36 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
+// --- FRONTEND POLLS THIS EVERY 2 SECONDS ---
+app.get('/api/scan/latest', async (req, res) => {
+  try {
+    // Get the most recent scan
+    const result = await sql`
+      SELECT id, tag_uid, name, price, scanned_at 
+      FROM scans 
+      ORDER BY id DESC 
+      LIMIT 1
+    `;
+
+    if (result.length === 0) {
+      return res.json({ hasScan: false });
+    }
+
+    return res.json({ hasScan: true, scan: result[0] });
+  } catch (error) {
+    console.error('Latest Scan API Error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// --- HEALTH CHECK ---
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`✅ SmartCart server running at http://localhost:${PORT}`);
   console.log(`📡 ESP32 endpoint: http://localhost:${PORT}/api/scan`);
+  console.log(`🔄 Frontend polls: http://localhost:${PORT}/api/scan/latest`);
 });

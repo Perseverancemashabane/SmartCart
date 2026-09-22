@@ -878,17 +878,56 @@ class MockLiveFeedModule {
 // 7. Application Initialization Entry Point
 // ==========================================================================
 document.addEventListener('DOMContentLoaded', () => {
-  // Initialize Core State & Modules
   const cartModule = new CartStateModule(appBus);
   const qrScanner = new QRScannerModule(appBus);
   const uiController = new UIController(appBus, cartModule);
   const stripePayment = new StripePaymentModule(appBus, cartModule, uiController);
   const mockFeed = new MockLiveFeedModule(appBus, cartModule);
 
-  // Listen to QR pairing trigger
   appBus.on('qr:scanned', (data) => {
     cartModule.pairCart(data.cartId);
   });
 
+  // --- REAL-TIME POLLING FOR ESP32 SCANS ---
+  let lastScanId = null;
+  const isLocalhost = window.location.hostname === 'localhost';
+  const API_URL = isLocalhost 
+    ? 'http://localhost:3000' 
+    : 'https://smart-cart-three-dusky.vercel.app';
+
+  async function pollForScans() {
+    // Only poll if a cart is paired
+    if (!cartModule.cartId) {
+      setTimeout(pollForScans, 2000);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/scan/latest`);
+      const data = await response.json();
+
+      if (data.hasScan && data.scan.id !== lastScanId) {
+        lastScanId = data.scan.id;
+
+        // Don't show the very first scan when the page loads
+        if (data.scan.name && data.scan.name !== 'Unknown') {
+          cartModule.addItem({
+            sku: data.scan.tag_uid,
+            name: data.scan.name,
+            price: parseFloat(data.scan.price)
+          });
+          console.log('ESP32 Scan detected:', data.scan);
+        }
+      }
+    } catch (error) {
+      console.warn('Polling error:', error);
+    }
+
+    setTimeout(pollForScans, 2000); // Poll every 2 seconds
+  }
+
+  // Start polling
+  pollForScans();
   console.log('SmartCart IoT Application Engine Started Successfully.');
+  console.log('Real-time polling active. API:', API_URL);
 });

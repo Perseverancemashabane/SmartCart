@@ -911,10 +911,10 @@ document.addEventListener('DOMContentLoaded', () => {
     cartModule.pairCart(data.cartId);
   });
 
-    // ============================================================
-  // REAL-TIME CART SYNC VIA SSE
-  // Connects to the SSE stream for live cart updates.
-  // Falls back to polling if SSE fails.
+      // ============================================================
+  // REAL-TIME CART SYNC — SSE with polling fallback
+  // Tries SSE for instant updates, falls back to 2s polling
+  // if the SSE connection fails or drops.
   // ============================================================
   const isLocalhost = window.location.hostname === 'localhost';
   const API_URL = isLocalhost 
@@ -922,9 +922,10 @@ document.addEventListener('DOMContentLoaded', () => {
     : 'https://smart-cart-5qod.vercel.app';
 
   let sseConnection = null;
-  let currentSSECartId = null;
+  let sseWorking = false;
   let lastServerSignature = '';
 
+  // ---------- Apply server session to local cart ----------
   function applyServerSession(session) {
     if (!session) return;
 
@@ -933,7 +934,7 @@ document.addEventListener('DOMContentLoaded', () => {
       cartModule.setDockedState(session.isDocked);
     }
 
-    // Build server items list (from either API format)
+    // Build server items list
     const rawItems = session.items || [];
     const serverItems = rawItems.map(item => ({
       sku: item.sku,
@@ -943,7 +944,6 @@ document.addEventListener('DOMContentLoaded', () => {
       icon: 'fa-box'
     }));
 
-    // Build signature to detect changes
     const serverSignature = JSON.stringify(serverItems.map(i => 
       `${i.sku}|${i.name}|${i.price}|${i.quantity}`
     ));
@@ -952,80 +952,114 @@ document.addEventListener('DOMContentLoaded', () => {
       lastServerSignature = serverSignature;
       cartModule.items = serverItems;
       appBus.emit('cart:updated', cartModule.getStateSummary());
-      console.log(`[SSE] Cart updated: ${serverItems.length} item(s)`);
+      console.log(`[Sync] Cart updated: ${serverItems.length} item(s)`);
     }
   }
 
+  // ---------- Polling fallback ----------
+  async function pollCart() {
+    if (!cartModule.cartId) {
+      setTimeout(pollCart, 2000);
+      return;
+    }
+
+    // Skip polling if SSE is confirmed working
+    if (sseWorking) {
+      setTimeout(pollCart, 2000);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/cart/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cart_id: cartModule.cartId })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.session) {
+          applyServerSession(data.session);
+        }
+      }
+    } catch (err) {
+      console.warn('[Poll] Error:', err);
+    }
+
+    setTimeout(pollCart, 2000);
+  }
+
+  // ---------- SSE connection ----------
   function connectSSE(cartId) {
-    // Disconnect any existing SSE connection
     if (sseConnection) {
       sseConnection.close();
       sseConnection = null;
     }
 
-    currentSSECartId = cartId;
     console.log(`[SSE] Connecting to stream for ${cartId}...`);
 
-    sseConnection = new EventSource(`${API_URL}/api/cart/stream/${cartId}`);
+    try {
+      sseConnection = new EventSource(`${API_URL}/api/cart/stream/${cartId}`);
 
-    sseConnection.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data);
+      sseConnection.onopen = () => {
+        sseWorking = true;
+        console.log(`[SSE] Connected to ${cartId} stream`);
+      };
 
-        // Initial connection heartbeat — has no items yet
-        if (payload.event === 'connected') {
-          console.log(`[SSE] Connected to ${cartId} stream`);
-          return;
+      sseConnection.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          console.log('[SSE] Message:', payload);
+
+          if (payload.event === 'connected') {
+            sseWorking = true;
+            return;
+          }
+
+          if (payload.event === 'cart_updated' || payload.event === 'station_docked') {
+            applyServerSession(payload);
+          }
+
+          if (payload.event === 'payment_succeeded') {
+            cartModule.setDockedState(false);
+          }
+        } catch (err) {
+          console.warn('[SSE] Failed to parse event:', err);
         }
+      };
 
-        // Cart update from ESP32 scan
-        if (payload.event === 'cart_updated') {
-          console.log('[SSE] Cart update received:', payload);
-          applyServerSession(payload);
+      sseConnection.onerror = (err) => {
+        console.warn('[SSE] Connection error — falling back to polling');
+        sseWorking = false;
+        if (sseConnection) {
+          sseConnection.close();
+          sseConnection = null;
         }
-
-        // Station docked event
-        if (payload.event === 'station_docked') {
-          console.log('[SSE] Station docked:', payload);
-          applyServerSession(payload);
-        }
-
-        // Payment succeeded
-        if (payload.event === 'payment_succeeded') {
-          console.log('[SSE] Payment succeeded:', payload);
-          cartModule.setDockedState(false);
-        }
-      } catch (err) {
-        console.warn('[SSE] Failed to parse event:', err);
-      }
-    };
-
-    sseConnection.onerror = (err) => {
-      console.warn('[SSE] Connection error, will retry...', err);
-      // EventSource auto-reconnects by default
-    };
-  }
-
-  function disconnectSSE() {
-    if (sseConnection) {
-      sseConnection.close();
-      sseConnection = null;
-      currentSSECartId = null;
-      console.log('[SSE] Disconnected');
+      };
+    } catch (err) {
+      console.warn('[SSE] Exception:', err);
+      sseWorking = false;
     }
   }
 
-  // When a cart is paired, connect the SSE stream
+  // ---------- Wire up to cart pairing ----------
   appBus.on('cart:paired', (data) => {
     connectSSE(data.cartId);
   });
 
-  // When a cart is unpaired, disconnect the SSE stream
   appBus.on('cart:unpaired', () => {
-    disconnectSSE();
+    if (sseConnection) {
+      sseConnection.close();
+      sseConnection = null;
+    }
+    sseWorking = false;
+    lastServerSignature = '';
   });
 
+  // ---------- Start polling as a fallback (always runs) ----------
+  pollCart();
+
   console.log('SmartCart IoT Application Engine Started Successfully.');
-  console.log('SSE mode active. API:', API_URL);
+  console.log('Sync mode: SSE with polling fallback. API:', API_URL);
   console.log('Press Ctrl+Shift+D to toggle the ESP32 simulator panel.');
 });

@@ -1,82 +1,92 @@
-// Prisma Database Schema for IoT Smart Shopping Cart System
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
-// Product Inventory Catalog
 model Product {
-  id            String     @id @default(uuid())
-  rfidTagId     String     @unique @map("rfid_tag_id")
-  name          String
-  priceCents    Int        @map("price_cents") // Amount in ZAR Cents (e.g., 3250 = R32.50)
-  stockQuantity Int        @default(100) @map("stock_quantity")
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
+  id            Int        @id @default(autoincrement())
+  rfidTagId     String     @unique @map("rfid_tag_id") @db.VarChar(50)
+  name          String     @db.VarChar(200)
+  priceCents    Int        @map("price_cents")
+  stockQuantity Int?       @default(0) @map("stock_quantity")
+  createdAt     DateTime?  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime?  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
   cartItems     CartItem[]
 
   @@map("products")
 }
 
-// Physical Shopping Cart Entity
 model Cart {
-  id             String        @id // e.g. "CART_001", "CART_004"
-  stationRfidTag String        @unique @map("station_rfid_tag") // RFID tag attached to cart base
-  status         String        @default("available") // "available", "active", "docked"
-  lastDockedAt   DateTime?     @map("last_docked_at")
-  createdAt      DateTime      @default(now()) @map("created_at")
+  id             String        @id @db.VarChar(50)
+  stationRfidTag String        @unique @map("station_rfid_tag") @db.VarChar(50)
+  status         String?       @default("available") @db.VarChar(20)
+  lastDockedAt   DateTime?     @map("last_docked_at") @db.Timestamp(6)
+  createdAt      DateTime?     @default(now()) @map("created_at") @db.Timestamp(6)
   sessions       CartSession[]
 
   @@map("carts")
 }
 
-// Active Shopping Session for a Customer
 model CartSession {
-  id            String        @id @default(uuid())
-  cartId        String        @map("cart_id")
-  cart          Cart          @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  isActive      Boolean       @default(true) @map("is_active")
-  isDocked      Boolean       @default(false) @map("is_docked")
-  subtotalCents Int           @default(0) @map("subtotal_cents")
-  taxCents      Int           @default(0) @map("tax_cents") // 15% VAT in ZAR Cents
-  totalCents    Int           @default(0) @map("total_cents")
-  createdAt     DateTime      @default(now()) @map("created_at")
-  closedAt      DateTime?     @map("closed_at")
+  id            Int           @id @default(autoincrement())
+  cartId        String        @map("cart_id") @db.VarChar(50)
+  isActive      Boolean?      @default(true) @map("is_active")
+  isDocked      Boolean?      @default(false) @map("is_docked")
+  subtotalCents Int?          @default(0) @map("subtotal_cents")
+  taxCents      Int?          @default(0) @map("tax_cents")
+  totalCents    Int?          @default(0) @map("total_cents")
+  createdAt     DateTime?     @default(now()) @map("created_at") @db.Timestamp(6)
+  closedAt      DateTime?     @map("closed_at") @db.Timestamp(6)
   items         CartItem[]
+  cart          Cart          @relation(fields: [cartId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   transactions  Transaction[]
 
   @@map("cart_sessions")
 }
 
-// Scanned Line Items in a Session
 model CartItem {
-  id             String      @id @default(uuid())
-  sessionId      String      @map("session_id")
-  session        CartSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  productId      String      @map("product_id")
-  product        Product     @relation(fields: [productId], references: [id])
-  quantity       Int         @default(1)
+  id             Int         @id @default(autoincrement())
+  sessionId      Int         @map("session_id")
+  productId      Int         @map("product_id")
+  quantity       Int?        @default(1)
   unitPriceCents Int         @map("unit_price_cents")
   subtotalCents  Int         @map("subtotal_cents")
+  created_at     DateTime?   @default(now()) @db.Timestamp(6)
+  product        Product     @relation(fields: [productId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session        CartSession @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([sessionId, productId])
   @@map("cart_items")
 }
 
-// Financial Payment Transaction Record
 model Transaction {
-  id                    String      @id @default(uuid())
-  sessionId             String      @map("session_id")
-  session               CartSession @relation(fields: [sessionId], references: [id])
-  stripePaymentIntentId String      @unique @map("stripe_payment_intent_id")
+  id                    Int         @id @default(autoincrement())
+  sessionId             Int         @map("session_id")
+  stripePaymentIntentId String?     @unique @map("stripe_payment_intent_id") @db.VarChar(200)
   amountCents           Int         @map("amount_cents")
-  currency              String      @default("ZAR")
-  status                String      @default("succeeded") // "pending", "succeeded", "failed"
-  createdAt             DateTime    @default(now()) @map("created_at")
+  currency              String?     @default("ZAR") @db.VarChar(10)
+  status                String?     @default("pending") @db.VarChar(50)
+  createdAt             DateTime?   @default(now()) @map("created_at") @db.Timestamp(6)
+  session               CartSession @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("transactions")
+}
+
+model items {
+  id      Int     @id @default(autoincrement())
+  tag_uid String  @unique @db.VarChar(20)
+  name    String  @db.VarChar(100)
+  price   Decimal @db.Decimal(10, 2)
+}
+
+model scans {
+  id         Int       @id @default(autoincrement())
+  tag_uid    String    @db.VarChar(20)
+  name       String?   @db.VarChar(100)
+  price      Decimal?  @db.Decimal(10, 2)
+  scanned_at DateTime? @default(now()) @db.Timestamp(6)
 }

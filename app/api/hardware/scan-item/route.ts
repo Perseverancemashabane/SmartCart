@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+
 import { cartEventsBus } from '@/lib/events';
 
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 export async function POST(request: Request) {
   try {
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
 
     if (action === 'add') {
       if (existingItem) {
-        const newQty = existingItem.quantity + 1;
+        const newQty = (existingItem.quantity ?? 0) + 1;
         await prisma.cartItem.update({
           where: { id: existingItem.id },
           data: {
@@ -64,8 +64,8 @@ export async function POST(request: Request) {
       }
     } else if (action === 'remove') {
       if (existingItem) {
-        if (existingItem.quantity > 1) {
-          const newQty = existingItem.quantity - 1;
+        if ((existingItem.quantity ?? 0) > 1) {
+          const newQty = (existingItem.quantity ?? 0) - 1;
           await prisma.cartItem.update({
             where: { id: existingItem.id },
             data: {

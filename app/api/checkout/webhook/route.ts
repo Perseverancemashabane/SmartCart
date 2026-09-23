@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+
 import Stripe from 'stripe';
 import { cartEventsBus } from '@/lib/events';
 
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock', {
   apiVersion: '2023-10-16' as any,
 });
@@ -31,7 +31,8 @@ export async function POST(request: Request) {
   // Handle payment_intent.succeeded
   if (event.type === 'payment_intent.succeeded') {
     const paymentIntent = event.data.object as Stripe.PaymentIntent;
-    const { sessionId, cartId } = paymentIntent.metadata || {};
+    const { sessionId: sessionIdStr, cartId } = paymentIntent.metadata || {};
+    const sessionId = sessionIdStr ? parseInt(sessionIdStr, 10) : null;
 
     if (sessionId) {
       // 1. Create Transaction Record

@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+
 import Stripe from 'stripe';
 
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock_secret_key', {
   apiVersion: '2023-10-16' as any,
 });
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
       }, { status: 403 });
     }
 
-    if (session.totalCents <= 0) {
+   if ((session.totalCents ?? 0) <= 0) {
       return NextResponse.json({ error: 'Cart total must be greater than zero to checkout.' }, { status: 400 });
     }
 
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
 
     if (process.env.STRIPE_SECRET_KEY) {
       const paymentIntent = await stripe.paymentIntents.create({
-        amount: session.totalCents,
+        amount: session.totalCents ?? 0,
         currency: 'zar',
         description: `SmartCart ${cart_id} Checkout Payment`,
         metadata: {

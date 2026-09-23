@@ -911,79 +911,121 @@ document.addEventListener('DOMContentLoaded', () => {
     cartModule.pairCart(data.cartId);
   });
 
-  // ============================================================
-  // REAL-TIME CART SYNC
-  // Polls the v2 cart session endpoint every 2 seconds and
-  // mirrors the server's cart state to the local UI.
+    // ============================================================
+  // REAL-TIME CART SYNC VIA SSE
+  // Connects to the SSE stream for live cart updates.
+  // Falls back to polling if SSE fails.
   // ============================================================
   const isLocalhost = window.location.hostname === 'localhost';
   const API_URL = isLocalhost 
     ? 'http://localhost:3000' 
     : 'https://smart-cart-5qod.vercel.app';
 
+  let sseConnection = null;
+  let currentSSECartId = null;
   let lastServerSignature = '';
 
-  async function syncCartFromServer() {
-    // Only sync if a cart is paired
-    if (!cartModule.cartId) {
-      setTimeout(syncCartFromServer, 2000);
-      return;
+  function applyServerSession(session) {
+    if (!session) return;
+
+    // Sync docked state
+    if (session.isDocked !== cartModule.isDockedAtStation) {
+      cartModule.setDockedState(session.isDocked);
     }
 
-    try {
-      const response = await fetch(`${API_URL}/api/cart/pair`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cart_id: cartModule.cartId })
-      });
+    // Build server items list (from either API format)
+    const rawItems = session.items || [];
+    const serverItems = rawItems.map(item => ({
+      sku: item.sku,
+      name: item.name,
+      price: item.unitPriceCents ? (item.unitPriceCents / 100) : parseFloat(item.price || 0),
+      quantity: item.quantity,
+      icon: 'fa-box'
+    }));
 
-      if (!response.ok) {
-        setTimeout(syncCartFromServer, 2000);
-        return;
-      }
+    // Build signature to detect changes
+    const serverSignature = JSON.stringify(serverItems.map(i => 
+      `${i.sku}|${i.name}|${i.price}|${i.quantity}`
+    ));
 
-      const data = await response.json();
-
-      if (data.success && data.session) {
-        const session = data.session;
-
-        // Sync docked state
-        if (session.isDocked !== cartModule.isDockedAtStation) {
-          cartModule.setDockedState(session.isDocked);
-        }
-
-        // Build server items list
-        const serverItems = (session.items || []).map(item => ({
-          sku: item.sku,
-          name: item.name,
-          price: item.unitPriceCents / 100,   // Convert cents to Rands
-          quantity: item.quantity,
-          icon: 'fa-box'
-        }));
-
-        // Build signature to detect changes
-        const serverSignature = JSON.stringify(serverItems.map(i => 
-          `${i.sku}|${i.name}|${i.price}|${i.quantity}`
-        ));
-
-        // Only update if something changed
-        if (serverSignature !== lastServerSignature) {
-          lastServerSignature = serverSignature;
-          cartModule.items = serverItems;
-          appBus.emit('cart:updated', cartModule.getStateSummary());
-          console.log(`[Sync] Cart updated: ${serverItems.length} item(s)`);
-        }
-      }
-    } catch (error) {
-      console.warn('[Sync] Cart sync error:', error);
+    if (serverSignature !== lastServerSignature) {
+      lastServerSignature = serverSignature;
+      cartModule.items = serverItems;
+      appBus.emit('cart:updated', cartModule.getStateSummary());
+      console.log(`[SSE] Cart updated: ${serverItems.length} item(s)`);
     }
-
-    setTimeout(syncCartFromServer, 2000);
   }
 
-  // Start syncing
-  syncCartFromServer();
+  function connectSSE(cartId) {
+    // Disconnect any existing SSE connection
+    if (sseConnection) {
+      sseConnection.close();
+      sseConnection = null;
+    }
+
+    currentSSECartId = cartId;
+    console.log(`[SSE] Connecting to stream for ${cartId}...`);
+
+    sseConnection = new EventSource(`${API_URL}/api/cart/stream/${cartId}`);
+
+    sseConnection.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+
+        // Initial connection heartbeat — has no items yet
+        if (payload.event === 'connected') {
+          console.log(`[SSE] Connected to ${cartId} stream`);
+          return;
+        }
+
+        // Cart update from ESP32 scan
+        if (payload.event === 'cart_updated') {
+          console.log('[SSE] Cart update received:', payload);
+          applyServerSession(payload);
+        }
+
+        // Station docked event
+        if (payload.event === 'station_docked') {
+          console.log('[SSE] Station docked:', payload);
+          applyServerSession(payload);
+        }
+
+        // Payment succeeded
+        if (payload.event === 'payment_succeeded') {
+          console.log('[SSE] Payment succeeded:', payload);
+          cartModule.setDockedState(false);
+        }
+      } catch (err) {
+        console.warn('[SSE] Failed to parse event:', err);
+      }
+    };
+
+    sseConnection.onerror = (err) => {
+      console.warn('[SSE] Connection error, will retry...', err);
+      // EventSource auto-reconnects by default
+    };
+  }
+
+  function disconnectSSE() {
+    if (sseConnection) {
+      sseConnection.close();
+      sseConnection = null;
+      currentSSECartId = null;
+      console.log('[SSE] Disconnected');
+    }
+  }
+
+  // When a cart is paired, connect the SSE stream
+  appBus.on('cart:paired', (data) => {
+    connectSSE(data.cartId);
+  });
+
+  // When a cart is unpaired, disconnect the SSE stream
+  appBus.on('cart:unpaired', () => {
+    disconnectSSE();
+  });
+
   console.log('SmartCart IoT Application Engine Started Successfully.');
-  console.log('Cart sync active. API:', API_URL);
+  console.log('SSE mode active. API:', API_URL);
   console.log('Press Ctrl+Shift+D to toggle the ESP32 simulator panel.');
 });

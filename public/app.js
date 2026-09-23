@@ -741,7 +741,7 @@ class StripePaymentModule {
 
 
 // ==========================================================================
-// 6. Mock Live Feed & ESP32 Simulation Panel Module
+// 6. Mock Live Feed & ESP32 Simulation Panel Module (Hidden by Default)
 // ==========================================================================
 class MockLiveFeedModule {
   constructor(bus, cartModule) {
@@ -751,6 +751,7 @@ class MockLiveFeedModule {
 
     this.initDOM();
     this.bindEvents();
+    this.setupKeyboardToggle();
   }
 
   initDOM() {
@@ -769,6 +770,28 @@ class MockLiveFeedModule {
     this.simPresetTrolley = document.getElementById('sim-preset-trolley');
     this.simRemoveRandom = document.getElementById('sim-remove-random');
     this.simClearAll = document.getElementById('sim-clear-all');
+
+    // Hide the debug panel by default
+    if (this.debugPanel) {
+      this.debugPanel.style.display = 'none';
+    }
+  }
+
+  setupKeyboardToggle() {
+    // Ctrl + Shift + D toggles the debug panel
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        e.preventDefault();
+        this.toggleDebugPanelVisibility();
+      }
+    });
+  }
+
+  toggleDebugPanelVisibility() {
+    if (!this.debugPanel) return;
+    const isHidden = this.debugPanel.style.display === 'none';
+    this.debugPanel.style.display = isHidden ? 'block' : 'none';
+    console.log(`Debug panel ${isHidden ? 'shown' : 'hidden'}`);
   }
 
   bindEvents() {
@@ -888,46 +911,79 @@ document.addEventListener('DOMContentLoaded', () => {
     cartModule.pairCart(data.cartId);
   });
 
-  // --- REAL-TIME POLLING FOR ESP32 SCANS ---
-  let lastScanId = null;
+  // ============================================================
+  // REAL-TIME CART SYNC
+  // Polls the v2 cart session endpoint every 2 seconds and
+  // mirrors the server's cart state to the local UI.
+  // ============================================================
   const isLocalhost = window.location.hostname === 'localhost';
   const API_URL = isLocalhost 
     ? 'http://localhost:3000' 
-    : 'https://smart-cart-three-dusky.vercel.app';
+    : 'https://smart-cart-5qod.vercel.app';
 
-  async function pollForScans() {
-    // Only poll if a cart is paired
+  let lastServerSignature = '';
+
+  async function syncCartFromServer() {
+    // Only sync if a cart is paired
     if (!cartModule.cartId) {
-      setTimeout(pollForScans, 2000);
+      setTimeout(syncCartFromServer, 2000);
       return;
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/scan/latest`);
+      const response = await fetch(`${API_URL}/api/cart/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cart_id: cartModule.cartId })
+      });
+
+      if (!response.ok) {
+        setTimeout(syncCartFromServer, 2000);
+        return;
+      }
+
       const data = await response.json();
 
-      if (data.hasScan && data.scan.id !== lastScanId) {
-        lastScanId = data.scan.id;
+      if (data.success && data.session) {
+        const session = data.session;
 
-        // Don't show the very first scan when the page loads
-        if (data.scan.name && data.scan.name !== 'Unknown') {
-          cartModule.addItem({
-            sku: data.scan.tag_uid,
-            name: data.scan.name,
-            price: parseFloat(data.scan.price)
-          });
-          console.log('ESP32 Scan detected:', data.scan);
+        // Sync docked state
+        if (session.isDocked !== cartModule.isDockedAtStation) {
+          cartModule.setDockedState(session.isDocked);
+        }
+
+        // Build server items list
+        const serverItems = (session.items || []).map(item => ({
+          sku: item.sku,
+          name: item.name,
+          price: item.unitPriceCents / 100,   // Convert cents to Rands
+          quantity: item.quantity,
+          icon: 'fa-box'
+        }));
+
+        // Build signature to detect changes
+        const serverSignature = JSON.stringify(serverItems.map(i => 
+          `${i.sku}|${i.name}|${i.price}|${i.quantity}`
+        ));
+
+        // Only update if something changed
+        if (serverSignature !== lastServerSignature) {
+          lastServerSignature = serverSignature;
+          cartModule.items = serverItems;
+          appBus.emit('cart:updated', cartModule.getStateSummary());
+          console.log(`[Sync] Cart updated: ${serverItems.length} item(s)`);
         }
       }
     } catch (error) {
-      console.warn('Polling error:', error);
+      console.warn('[Sync] Cart sync error:', error);
     }
 
-    setTimeout(pollForScans, 2000); // Poll every 2 seconds
+    setTimeout(syncCartFromServer, 2000);
   }
 
-  // Start polling
-  pollForScans();
+  // Start syncing
+  syncCartFromServer();
   console.log('SmartCart IoT Application Engine Started Successfully.');
-  console.log('Real-time polling active. API:', API_URL);
+  console.log('Cart sync active. API:', API_URL);
+  console.log('Press Ctrl+Shift+D to toggle the ESP32 simulator panel.');
 });

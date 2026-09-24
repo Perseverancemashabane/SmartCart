@@ -115,7 +115,7 @@ class CartStateModule {
 
   setDockedState(isDocked) {
     const newState = Boolean(isDocked);
-    if (this.isDockedAtStation === newState) return; // no change, skip
+    if (this.isDockedAtStation === newState) return;
     this.isDockedAtStation = newState;
     this.bus.emit('station:changed', { isDocked: this.isDockedAtStation });
   }
@@ -320,7 +320,6 @@ class UIController {
       if (this.pairedCartIdDisplay) this.pairedCartIdDisplay.textContent = `Cart #${data.cartId.replace('CART_', '')}`;
       this.switchView('view-cart');
       this.showToast(`Successfully paired with ${data.cartId}`, 'success');
-      // Force the station banner to show the current state (from server sync)
       this.renderStationBanner(this.cartModule.isDockedAtStation);
     });
 
@@ -352,7 +351,7 @@ class UIController {
     });
 
     if (this.btnCheckout) {
-      this.btnCheckout.addEventListener('click', () => {
+      this.btnCheckout.addEventListener('click', async () => {
         if (!this.cartModule.isDockedAtStation) {
           this.showToast('Return cart to base station to unlock payment!', 'warning');
           return;
@@ -361,7 +360,30 @@ class UIController {
           this.showToast('Your cart is empty! Add items before checkout.', 'warning');
           return;
         }
-        this.bus.emit('checkout:opened');
+
+        try {
+          const isLocalhost = window.location.hostname === 'localhost';
+          const API_URL = isLocalhost ? 'http://localhost:3000' : 'https://smart-cart-5qod.vercel.app';
+
+          this.showToast('Redirecting to payment...', 'info');
+
+          const response = await fetch(`${API_URL}/api/checkout/create-intent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cart_id: this.cartModule.cartId })
+          });
+
+          const data = await response.json();
+
+          if (data.success && data.authorizationUrl) {
+            window.location.href = data.authorizationUrl;
+          } else {
+            this.showToast(data.error || 'Payment failed', 'error');
+          }
+        } catch (err) {
+          console.error('Checkout error:', err);
+          this.showToast('Payment initialization failed', 'error');
+        }
       });
     }
 
@@ -493,7 +515,7 @@ class UIController {
       this.btnCheckout.disabled = false;
       this.btnCheckout.className = 'btn btn-primary btn-block btn-lg btn-glow';
       if (this.checkoutBtnIcon) this.checkoutBtnIcon.className = 'fa-solid fa-credit-card';
-      if (this.checkoutBtnText) this.checkoutBtnText.textContent = 'Proceed to Stripe Checkout';
+      if (this.checkoutBtnText) this.checkoutBtnText.textContent = 'Proceed to Pay';
       if (this.checkoutTooltip) this.checkoutTooltip.classList.add('hidden');
     } else {
       this.btnCheckout.disabled = true;
@@ -532,34 +554,19 @@ class UIController {
 
 
 // ==========================================================================
-// 5. Stripe Payment & Digital Receipt Integration Module
+// 5. Payment & Digital Receipt Integration Module (Paystack)
 // ==========================================================================
-class StripePaymentModule {
+class PaymentModule {
   constructor(bus, cartModule, uiController) {
     this.bus = bus;
     this.cartModule = cartModule;
     this.ui = uiController;
-    
-    this.stripe = null;
-    this.cardElement = null;
 
     this.initDOM();
     this.bindEvents();
-    this.initStripe();
   }
 
   initDOM() {
-    this.modalPayment = document.getElementById('modal-payment');
-    this.btnClosePayment = document.getElementById('btn-close-payment');
-    this.paymentTotalDisplay = document.getElementById('payment-total-display');
-    this.paymentForm = document.getElementById('payment-form');
-    this.cardErrors = document.getElementById('card-errors');
-    
-    this.btnPayNow = document.getElementById('btn-pay-now');
-    this.payBtnSpinner = document.getElementById('pay-btn-spinner');
-    this.payBtnText = document.getElementById('pay-btn-text');
-    this.payBtnTotalVal = document.getElementById('pay-btn-total-val');
-
     this.modalReceipt = document.getElementById('modal-receipt');
     this.receiptOrderRef = document.getElementById('receipt-order-ref');
     this.receiptTimestamp = document.getElementById('receipt-timestamp');
@@ -570,122 +577,9 @@ class StripePaymentModule {
     this.btnFinishReset = document.getElementById('btn-finish-reset');
   }
 
-  initStripe() {
-    try {
-      if (typeof Stripe !== 'undefined') {
-        this.stripe = Stripe('pk_test_TYooMQbfWZsq259Y2yJuTLnY00w127vq0');
-        const elements = this.stripe.elements();
-        
-        const style = {
-          base: {
-            color: '#f8fafc',
-            fontFamily: 'Inter, sans-serif',
-            fontSmoothing: 'antialiased',
-            fontSize: '16px',
-            '::placeholder': { color: '#64748b' }
-          },
-          invalid: { color: '#ef4444', iconColor: '#ef4444' }
-        };
-
-        const cardContainer = document.getElementById('card-element');
-        if (cardContainer) {
-          this.cardElement = elements.create('card', { style });
-          this.cardElement.mount('#card-element');
-          this.cardElement.on('change', (event) => {
-            if (this.cardErrors) {
-              this.cardErrors.textContent = event.error ? event.error.message : '';
-            }
-          });
-        }
-      } else {
-        this.renderFallbackCardInput();
-      }
-    } catch (e) {
-      console.warn('Stripe fallback active:', e);
-      this.renderFallbackCardInput();
-    }
-  }
-
-  renderFallbackCardInput() {
-    const cardContainer = document.getElementById('card-element');
-    if (cardContainer) {
-      cardContainer.innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <input type="text" placeholder="4242 •••• •••• 4242" value="4242 4242 4242 4242" style="width: 100%; background: transparent; border: none; color: #f8fafc; font-family: monospace; font-size: 1rem; outline: none;">
-          <div style="display: flex; gap: 12px; font-size: 0.85rem; color: #94a3b8;">
-            <span>MM/YY: 12/28</span>
-            <span>CVC: 123</span>
-          </div>
-        </div>
-      `;
-    }
-  }
-
   bindEvents() {
-    this.bus.on('checkout:opened', () => this.openPaymentModal());
-
-    if (this.btnClosePayment) {
-      this.btnClosePayment.addEventListener('click', () => this.closePaymentModal());
-    }
-
-    if (this.paymentForm) {
-      this.paymentForm.addEventListener('submit', (e) => this.handlePaymentSubmit(e));
-    }
-
     if (this.btnFinishReset) {
       this.btnFinishReset.addEventListener('click', () => this.resetAndFinish());
-    }
-  }
-
-  openPaymentModal() {
-    const totalFormatted = CartStateModule.formatCurrency(this.cartModule.getTotalAmount());
-    if (this.paymentTotalDisplay) this.paymentTotalDisplay.textContent = totalFormatted;
-    if (this.payBtnTotalVal) this.payBtnTotalVal.textContent = totalFormatted;
-    if (this.cardErrors) this.cardErrors.textContent = '';
-    
-    if (this.modalPayment) this.modalPayment.classList.remove('hidden');
-  }
-
-  closePaymentModal() {
-    if (this.modalPayment) this.modalPayment.classList.add('hidden');
-  }
-
-    async handlePaymentSubmit(e) {
-    e.preventDefault();
-    this.setPaymentLoading(true);
-
-    try {
-      const isLocalhost = window.location.hostname === 'localhost';
-      const API_URL = isLocalhost ? 'http://localhost:3000' : 'https://smart-cart-5qod.vercel.app';
-
-      const response = await fetch(`${API_URL}/api/checkout/create-intent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cart_id: this.cartModule.cartId })
-      });
-
-      const data = await response.json();
-
-      if (!data.success || !data.authorizationUrl) {
-        throw new Error(data.error || data.message || 'Payment initialization failed');
-      }
-
-      window.location.href = data.authorizationUrl;
-
-    } catch (err) {
-      console.error('[Payment] Error:', err);
-      this.setPaymentLoading(false);
-      if (this.cardErrors) {
-        this.cardErrors.textContent = err.message;
-      }
-    }
-  }
-
-  setPaymentLoading(isLoading) {
-    if (this.btnPayNow) this.btnPayNow.disabled = isLoading;
-    if (this.payBtnSpinner) {
-      if (isLoading) this.payBtnSpinner.classList.remove('hidden');
-      else this.payBtnSpinner.classList.add('hidden');
     }
   }
 
@@ -744,7 +638,6 @@ class StripePaymentModule {
       }
     }
 
-    // Reset local dock state immediately
     this.cartModule.setDockedState(false);
     this.cartModule.unpairCart();
   }
@@ -905,20 +798,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const cartModule = new CartStateModule(appBus);
   const qrScanner = new QRScannerModule(appBus);
   const uiController = new UIController(appBus, cartModule);
-  const stripePayment = new StripePaymentModule(appBus, cartModule, uiController);
+  const paymentModule = new PaymentModule(appBus, cartModule, uiController);
   const mockFeed = new MockLiveFeedModule(appBus, cartModule);
 
-  // ============================================================
-  // API URL — declared FIRST so handlers can use it
-  // ============================================================
   const isLocalhost = window.location.hostname === 'localhost';
   const API_URL = isLocalhost 
     ? 'http://localhost:3000' 
     : 'https://smart-cart-5qod.vercel.app';
 
-  // ============================================================
-  // PAIR HANDLER — creates a real session on the server
-  // ============================================================
   appBus.on('qr:scanned', async (data) => {
     console.log('[Pair] Attempting to pair:', data.cartId);
     try {
@@ -942,14 +829,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // ============================================================
-  // REAL-TIME CART SYNC — read-only polling endpoint
-  // ============================================================
   let lastServerSignature = '';
 
   function applyServerSession(session) {
     if (!session) {
-      // No active session — clear local state
       if (cartModule.items.length > 0 || cartModule.isDockedAtStation) {
         cartModule.items = [];
         cartModule.setDockedState(false);
@@ -960,7 +843,6 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // ALWAYS sync dock state from server (removed the != check)
     cartModule.setDockedState(Boolean(session.isDocked));
 
     const rawItems = session.items || [];
@@ -1006,17 +888,9 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(pollCart, 2000);
   }
 
-  appBus.on('cart:paired', () => {
-    lastServerSignature = '';
-  });
+  appBus.on('cart:paired', () => { lastServerSignature = ''; });
+  appBus.on('cart:unpaired', () => { lastServerSignature = ''; });
 
-  appBus.on('cart:unpaired', () => {
-    lastServerSignature = '';
-  });
-
-    // ============================================================
-  // HANDLE PAYSTACK CALLBACK — ?paid=true&cart_id=CART_004
-  // ============================================================
   const urlParams = new URLSearchParams(window.location.search);
   const paid = urlParams.get('paid');
   const paidCartId = urlParams.get('cart_id');
@@ -1024,7 +898,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (paid === 'true' && paidCartId) {
     console.log('[Paystack] Payment confirmed for', paidCartId);
     
-    // Call reset endpoint to close the session and clear items
     fetch(`${API_URL}/api/cart/reset`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1033,9 +906,7 @@ document.addEventListener('DOMContentLoaded', () => {
     .then(r => r.json())
     .then(data => {
       console.log('[Paystack] Reset result:', data);
-      // Clean the URL (remove the query params)
       window.history.replaceState({}, '', window.location.pathname);
-      // Show success toast
       appBus.emit('ui:toast', { 
         message: 'Payment successful! Cart reset.', 
         type: 'success' 

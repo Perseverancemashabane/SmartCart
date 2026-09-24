@@ -26,7 +26,7 @@ export async function POST(request: Request) {
       }, { status: 403 });
     }
 
-    if (session.totalCents <= 0) {
+    if ((session.totalCents ?? 0) <= 0) {
       return NextResponse.json({ error: 'Cart total must be greater than zero to checkout.' }, { status: 400 });
     }
 
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
         success: true,
         clientSecret: 'mock_client_secret_demo',
         paymentIntentId: 'mock_' + Date.now(),
-        amountCents: session.totalCents,
+        amountCents: session.totalCents ?? 0,
         currency: 'ZAR',
         cartId: cart_id,
         sessionId: session.id,
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         email,
-        amount: session.totalCents,
+        amount: session.totalCents ?? 0,
         currency: 'ZAR',
         reference,
         metadata: {

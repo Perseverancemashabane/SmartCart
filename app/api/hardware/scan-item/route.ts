@@ -55,8 +55,8 @@ export async function POST(request: Request) {
         await prisma.cartItem.update({
           where: { id: existingItem.id },
           data: {
-            quantity: existingItem.quantity + 1,
-            subtotalCents: (existingItem.quantity + 1) * product.priceCents,
+           quantity: (existingItem.quantity ?? 0) + 1,
+           subtotalCents: ((existingItem.quantity ?? 0) + 1) * product.priceCents,
           },
         });
         actionTaken = 'incremented';
@@ -79,8 +79,8 @@ export async function POST(request: Request) {
           await prisma.cartItem.update({
             where: { id: existingItem.id },
             data: {
-              quantity: existingItem.quantity - 1,
-              subtotalCents: (existingItem.quantity - 1) * product.priceCents,
+             quantity: (existingItem.quantity ?? 0) - 1,
+             subtotalCents: ((existingItem.quantity ?? 0) - 1) * product.priceCents,
             },
           });
           actionTaken = 'decremented';

@@ -916,24 +916,24 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ============================================================
-  // REAL-TIME CART SYNC — SSE with polling fallback
+  // REAL-TIME CART SYNC — Polling based (SSE has Vercel timeout issues)
   // ============================================================
   const isLocalhost = window.location.hostname === 'localhost';
   const API_URL = isLocalhost 
     ? 'http://localhost:3000' 
     : 'https://smart-cart-5qod.vercel.app';
 
-  let sseConnection = null;
-  let sseWorking = false;
   let lastServerSignature = '';
 
   function applyServerSession(session) {
     if (!session) return;
 
+    // Sync docked state
     if (session.isDocked !== cartModule.isDockedAtStation) {
       cartModule.setDockedState(session.isDocked);
     }
 
+    // Build server items list
     const rawItems = session.items || [];
     const serverItems = rawItems.map(item => ({
       sku: item.sku,
@@ -943,6 +943,7 @@ document.addEventListener('DOMContentLoaded', () => {
       icon: 'fa-box'
     }));
 
+    // Build signature to detect changes
     const serverSignature = JSON.stringify(serverItems.map(i => 
       `${i.sku}|${i.name}|${i.price}|${i.quantity}`
     ));
@@ -956,103 +957,39 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function pollCart() {
-    if (!cartModule.cartId) {
-      setTimeout(pollCart, 2000);
-      return;
-    }
+    if (cartModule.cartId) {
+      try {
+        const response = await fetch(`${API_URL}/api/cart/pair`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cart_id: cartModule.cartId })
+        });
 
-    if (sseWorking) {
-      setTimeout(pollCart, 2000);
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_URL}/api/cart/pair`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cart_id: cartModule.cartId })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.session) {
-          applyServerSession(data.session);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.session) {
+            applyServerSession(data.session);
+          }
         }
+      } catch (err) {
+        console.warn('[Poll] Error:', err);
       }
-    } catch (err) {
-      console.warn('[Poll] Error:', err);
     }
-
     setTimeout(pollCart, 2000);
   }
 
-  function connectSSE(cartId) {
-    if (sseConnection) {
-      sseConnection.close();
-      sseConnection = null;
-    }
-
-    console.log(`[SSE] Connecting to stream for ${cartId}...`);
-
-    try {
-      sseConnection = new EventSource(`${API_URL}/api/cart/stream/${cartId}`);
-
-      sseConnection.onopen = () => {
-        sseWorking = true;
-        console.log(`[SSE] Connected to ${cartId} stream`);
-      };
-
-      sseConnection.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data);
-
-          if (payload.event === 'connected') {
-            sseWorking = true;
-            return;
-          }
-
-          if (payload.event === 'cart_updated' || payload.event === 'station_docked' || payload.event === 'station_undocked') {
-            applyServerSession(payload);
-          }
-
-          if (payload.event === 'payment_succeeded') {
-            cartModule.setDockedState(false);
-          }
-        } catch (err) {
-          console.warn('[SSE] Parse error:', err);
-        }
-      };
-
-      sseConnection.onerror = () => {
-        console.warn('[SSE] Connection error — falling back to polling');
-        sseWorking = false;
-        if (sseConnection) {
-          sseConnection.close();
-          sseConnection = null;
-        }
-      };
-    } catch (err) {
-      console.warn('[SSE] Exception:', err);
-      sseWorking = false;
-    }
-  }
-
-  appBus.on('cart:paired', (data) => {
-    connectSSE(data.cartId);
-  });
-
-  appBus.on('cart:unpaired', () => {
-    if (sseConnection) {
-      sseConnection.close();
-      sseConnection = null;
-    }
-    sseWorking = false;
+  appBus.on('cart:paired', () => {
     lastServerSignature = '';
   });
 
+  appBus.on('cart:unpaired', () => {
+    lastServerSignature = '';
+  });
+
+  // Start polling
   pollCart();
 
   console.log('SmartCart IoT Application Engine Started Successfully.');
-  console.log('Sync mode: SSE with polling fallback. API:', API_URL);
+  console.log('Polling mode active (2s interval). API:', API_URL);
   console.log('Press Ctrl+Shift+D to toggle the ESP32 simulator panel.');
 });

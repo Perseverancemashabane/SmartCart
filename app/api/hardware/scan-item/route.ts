@@ -11,7 +11,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'cart_id and rfid_tag are required' }, { status: 400 });
     }
 
-    // Lookup Product by RFID Tag ID
     const product = await prisma.product.findUnique({
       where: { rfidTagId: rfid_tag },
     });
@@ -20,7 +19,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Product with RFID tag ${rfid_tag} not found` }, { status: 404 });
     }
 
-    // Lookup active CartSession
     const session = await prisma.cartSession.findFirst({
       where: { cartId: cart_id, isActive: true },
     });
@@ -29,7 +27,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `No active session found for cart ${cart_id}` }, { status: 404 });
     }
 
-    // BUG 2 FIX: Reject scans while cart is docked at base station
+    // Reject scans while cart is docked
     if (session.isDocked) {
       return NextResponse.json(
         { error: 'Cart is docked at base station. Cannot scan new items.' },
@@ -37,7 +35,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if item already exists in this session
     const existingItem = await prisma.cartItem.findUnique({
       where: {
         sessionId_productId: {
@@ -47,16 +44,17 @@ export async function POST(request: Request) {
       },
     });
 
+    const currentQty = existingItem?.quantity ?? 0;
     let actionTaken = 'none';
 
     if (action === 'add') {
-      // Explicit add — always increment
       if (existingItem) {
+        const newQty = currentQty + 1;
         await prisma.cartItem.update({
           where: { id: existingItem.id },
           data: {
-           quantity: (existingItem.quantity ?? 0) + 1,
-           subtotalCents: ((existingItem.quantity ?? 0) + 1) * product.priceCents,
+            quantity: newQty,
+            subtotalCents: newQty * product.priceCents,
           },
         });
         actionTaken = 'incremented';
@@ -73,14 +71,14 @@ export async function POST(request: Request) {
         actionTaken = 'added';
       }
     } else if (action === 'remove') {
-      // Explicit remove — decrement or delete
       if (existingItem) {
-        if (existingItem.quantity > 1) {
+        if (currentQty > 1) {
+          const newQty = currentQty - 1;
           await prisma.cartItem.update({
             where: { id: existingItem.id },
             data: {
-             quantity: (existingItem.quantity ?? 0) - 1,
-             subtotalCents: ((existingItem.quantity ?? 0) - 1) * product.priceCents,
+              quantity: newQty,
+              subtotalCents: newQty * product.priceCents,
             },
           });
           actionTaken = 'decremented';
@@ -90,9 +88,7 @@ export async function POST(request: Request) {
         }
       }
     } else {
-      // BUG 3 FIX: Toggle behaviour
-      // If item exists → remove it completely (toggle off)
-      // If item doesn't exist → add it (toggle on)
+      // Toggle: if exists, remove; if not, add
       if (existingItem) {
         await prisma.cartItem.delete({ where: { id: existingItem.id } });
         actionTaken = 'removed';
@@ -110,13 +106,13 @@ export async function POST(request: Request) {
       }
     }
 
-    // Recalculate session totals
+    // Recalculate totals
     const allItems = await prisma.cartItem.findMany({
       where: { sessionId: session.id },
       include: { product: true },
     });
 
-    const subtotalCents = allItems.reduce((acc, item) => acc + item.subtotalCents, 0);
+    const subtotalCents = allItems.reduce((acc, item) => acc + (item.subtotalCents ?? 0), 0);
     const taxCents = Math.round(subtotalCents * 0.15);
     const totalCents = subtotalCents + taxCents;
 
@@ -126,7 +122,6 @@ export async function POST(request: Request) {
       include: { items: { include: { product: true } } },
     });
 
-    // Build SSE payload
     const streamPayload = {
       event: 'cart_updated',
       cartId: cart_id,

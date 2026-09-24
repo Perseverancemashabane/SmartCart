@@ -880,8 +880,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const stripePayment = new StripePaymentModule(appBus, cartModule, uiController);
   const mockFeed = new MockLiveFeedModule(appBus, cartModule);
 
-   appBus.on('qr:scanned', async (data) => {
-    // Call the API first to create/retrieve the session
+  // ============================================================
+  // API URL — declared FIRST so handlers can use it
+  // ============================================================
+  const isLocalhost = window.location.hostname === 'localhost';
+  const API_URL = isLocalhost 
+    ? 'http://localhost:3000' 
+    : 'https://smart-cart-5qod.vercel.app';
+
+  // ============================================================
+  // PAIR HANDLER — creates a real session on the server
+  // ============================================================
+  appBus.on('qr:scanned', async (data) => {
+    console.log('[Pair] Attempting to pair:', data.cartId);
     try {
       const response = await fetch(`${API_URL}/api/cart/pair`, {
         method: 'POST',
@@ -897,7 +908,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const result = await response.json();
       console.log('[Pair] Session created:', result.session?.id);
       
-      // Now update local state
       cartModule.pairCart(data.cartId);
     } catch (err) {
       console.error('[Pair] Fetch failed:', err);
@@ -907,16 +917,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // ============================================================
   // REAL-TIME CART SYNC — read-only polling endpoint
   // ============================================================
-  const isLocalhost = window.location.hostname === 'localhost';
-  const API_URL = isLocalhost 
-    ? 'http://localhost:3000' 
-    : 'https://smart-cart-5qod.vercel.app';
-
   let lastServerSignature = '';
 
-   function applyServerSession(session) {
+  function applyServerSession(session) {
     if (!session) {
-      // No active session — reset local state
       if (cartModule.items.length > 0 || cartModule.isDockedAtStation) {
         cartModule.items = [];
         cartModule.setDockedState(false);
@@ -927,12 +931,10 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Sync docked state
     if (session.isDocked !== cartModule.isDockedAtStation) {
       cartModule.setDockedState(session.isDocked);
     }
 
-    // Build server items list
     const rawItems = session.items || [];
     const serverItems = rawItems.map(item => ({
       sku: item.sku,
@@ -957,19 +959,18 @@ document.addEventListener('DOMContentLoaded', () => {
   async function pollCart() {
     if (cartModule.cartId) {
       try {
-        // Use the READ-ONLY sync endpoint — doesn't modify state
         const response = await fetch(`${API_URL}/api/cart/sync`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cart_id: cartModule.cartId })
         });
 
-             if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          applyServerSession(data.session);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            applyServerSession(data.session);
+          }
         }
-      }
       } catch (err) {
         console.warn('[Poll] Error:', err);
       }

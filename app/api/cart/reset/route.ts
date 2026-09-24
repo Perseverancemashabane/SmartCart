@@ -10,13 +10,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'cart_id is required' }, { status: 400 });
     }
 
-    // Find the active session for this cart
-    const session = await prisma.cartSession.findFirst({
+    console.log(`[Reset] Request received for ${cart_id}`);
+
+    // Find ALL active sessions for this cart (in case there are duplicates)
+    const activeSessions = await prisma.cartSession.findMany({
       where: { cartId: cart_id, isActive: true },
     });
 
-    if (!session) {
-      // Nothing to reset — return success anyway (idempotent)
+    console.log(`[Reset] Found ${activeSessions.length} active session(s)`);
+
+    if (activeSessions.length === 0) {
       return NextResponse.json({
         success: true,
         message: `No active session found for ${cart_id}`,
@@ -24,14 +27,16 @@ export async function POST(request: Request) {
       });
     }
 
-    // Delete all items in this session
-    await prisma.cartItem.deleteMany({
-      where: { sessionId: session.id },
+    // Delete ALL items from ALL active sessions
+    const deletedItems = await prisma.cartItem.deleteMany({
+      where: { sessionId: { in: activeSessions.map(s => s.id) } },
     });
 
-    // Close the session
-    await prisma.cartSession.update({
-      where: { id: session.id },
+    console.log(`[Reset] Deleted ${deletedItems.count} item(s)`);
+
+    // Close ALL active sessions
+    await prisma.cartSession.updateMany({
+      where: { id: { in: activeSessions.map(s => s.id) } },
       data: {
         isActive: false,
         isDocked: false,
@@ -42,16 +47,20 @@ export async function POST(request: Request) {
       },
     });
 
-    // Reset the cart status
+    // Reset cart status
     await prisma.cart.update({
       where: { id: cart_id },
       data: { status: 'available' },
     });
 
+    console.log(`[Reset] Cart ${cart_id} reset successfully`);
+
     return NextResponse.json({
       success: true,
       message: `Cart ${cart_id} reset successfully`,
       cartId: cart_id,
+      itemsDeleted: deletedItems.count,
+      sessionsClosed: activeSessions.length,
     });
   } catch (error: any) {
     console.error('Error in /api/cart/reset:', error);

@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server';
-
 import { cartEventsBus } from '@/lib/events';
-
 import { prisma } from '@/lib/prisma';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { cart_id, rfid_tag, action = 'add' } = body;
+    const { cart_id, rfid_tag, action = 'toggle' } = body;
 
     if (!cart_id || !rfid_tag) {
       return NextResponse.json({ error: 'cart_id and rfid_tag are required' }, { status: 400 });
@@ -31,7 +29,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `No active session found for cart ${cart_id}` }, { status: 404 });
     }
 
-    // Process CartItem addition/removal
+    // BUG 2 FIX: Reject scans while cart is docked at base station
+    if (session.isDocked) {
+      return NextResponse.json(
+        { error: 'Cart is docked at base station. Cannot scan new items.' },
+        { status: 403 }
+      );
+    }
+
+    // Check if item already exists in this session
     const existingItem = await prisma.cartItem.findUnique({
       where: {
         sessionId_productId: {
@@ -41,16 +47,19 @@ export async function POST(request: Request) {
       },
     });
 
+    let actionTaken = 'none';
+
     if (action === 'add') {
+      // Explicit add — always increment
       if (existingItem) {
-        const newQty = (existingItem.quantity ?? 0) + 1;
         await prisma.cartItem.update({
           where: { id: existingItem.id },
           data: {
-            quantity: newQty,
-            subtotalCents: newQty * product.priceCents,
+            quantity: existingItem.quantity + 1,
+            subtotalCents: (existingItem.quantity + 1) * product.priceCents,
           },
         });
+        actionTaken = 'incremented';
       } else {
         await prisma.cartItem.create({
           data: {
@@ -61,23 +70,43 @@ export async function POST(request: Request) {
             subtotalCents: product.priceCents,
           },
         });
+        actionTaken = 'added';
       }
     } else if (action === 'remove') {
+      // Explicit remove — decrement or delete
       if (existingItem) {
-        if ((existingItem.quantity ?? 0) > 1) {
-          const newQty = (existingItem.quantity ?? 0) - 1;
+        if (existingItem.quantity > 1) {
           await prisma.cartItem.update({
             where: { id: existingItem.id },
             data: {
-              quantity: newQty,
-              subtotalCents: newQty * product.priceCents,
+              quantity: existingItem.quantity - 1,
+              subtotalCents: (existingItem.quantity - 1) * product.priceCents,
             },
           });
+          actionTaken = 'decremented';
         } else {
-          await prisma.cartItem.delete({
-            where: { id: existingItem.id },
-          });
+          await prisma.cartItem.delete({ where: { id: existingItem.id } });
+          actionTaken = 'removed';
         }
+      }
+    } else {
+      // BUG 3 FIX: Toggle behaviour
+      // If item exists → remove it completely (toggle off)
+      // If item doesn't exist → add it (toggle on)
+      if (existingItem) {
+        await prisma.cartItem.delete({ where: { id: existingItem.id } });
+        actionTaken = 'removed';
+      } else {
+        await prisma.cartItem.create({
+          data: {
+            sessionId: session.id,
+            productId: product.id,
+            quantity: 1,
+            unitPriceCents: product.priceCents,
+            subtotalCents: product.priceCents,
+          },
+        });
+        actionTaken = 'added';
       }
     }
 
@@ -88,24 +117,16 @@ export async function POST(request: Request) {
     });
 
     const subtotalCents = allItems.reduce((acc, item) => acc + item.subtotalCents, 0);
-    const taxCents = Math.round(subtotalCents * 0.15); // 15% VAT
+    const taxCents = Math.round(subtotalCents * 0.15);
     const totalCents = subtotalCents + taxCents;
 
     const updatedSession = await prisma.cartSession.update({
       where: { id: session.id },
-      data: {
-        subtotalCents,
-        taxCents,
-        totalCents,
-      },
-      include: {
-        items: {
-          include: { product: true },
-        },
-      },
+      data: { subtotalCents, taxCents, totalCents },
+      include: { items: { include: { product: true } } },
     });
 
-    // Formatted payload for real-time SSE stream listeners
+    // Build SSE payload
     const streamPayload = {
       event: 'cart_updated',
       cartId: cart_id,
@@ -122,10 +143,9 @@ export async function POST(request: Request) {
         quantity: i.quantity,
         subtotalCents: i.subtotalCents,
       })),
-      lastAction: { action, product: product.name, sku: rfid_tag },
+      lastAction: { action: actionTaken, product: product.name, sku: rfid_tag },
     };
 
-    // Emit live SSE update event
     cartEventsBus.emit(`stream:${cart_id}`, streamPayload);
 
     return NextResponse.json({
@@ -135,6 +155,9 @@ export async function POST(request: Request) {
     });
   } catch (error: any) {
     console.error('Error in /api/hardware/scan-item:', error);
-    return NextResponse.json({ error: 'Internal Server Error', message: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Internal Server Error', message: error.message },
+      { status: 500 }
+    );
   }
 }

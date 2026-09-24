@@ -733,15 +733,12 @@ class StripePaymentModule {
     this.ui.showToast('Payment Authorized & Cleared!', 'success');
   }
 
-    async resetAndFinish() {
+  async resetAndFinish() {
     if (this.modalReceipt) this.modalReceipt.classList.add('hidden');
 
     const cartId = this.cartModule.cartId;
+    console.log(`[Reset] Starting reset for ${cartId}`);
 
-    // Unpair locally first (instant UI feedback)
-    this.cartModule.unpairCart();
-
-    // Tell the server to reset the session (fire-and-forget)
     if (cartId) {
       try {
         const isLocalhost = window.location.hostname === 'localhost';
@@ -749,16 +746,26 @@ class StripePaymentModule {
           ? 'http://localhost:3000' 
           : 'https://smart-cart-5qod.vercel.app';
 
-        await fetch(`${API_URL}/api/cart/reset`, {
+        // Call the reset endpoint
+        const response = await fetch(`${API_URL}/api/cart/reset`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cart_id: cartId })
         });
-        console.log(`[Reset] Cart ${cartId} reset on server`);
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[Reset] Server response:', data);
+        } else {
+          console.warn('[Reset] Server error:', response.status);
+        }
       } catch (err) {
-        console.warn('[Reset] Failed to reset cart on server:', err);
+        console.warn('[Reset] Network error:', err);
       }
     }
+
+    // NOW unpair locally — after server reset completes
+    this.cartModule.unpairCart();
   }
 }
 

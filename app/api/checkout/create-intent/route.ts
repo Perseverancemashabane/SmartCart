@@ -46,26 +46,28 @@ export async function POST(request: Request) {
     }
 
     const reference = `SC-${cart_id}-${Date.now()}`;
-   const email = `cart-${cart_id}@smartcart-demo.com`;
-    const response = await fetch('https://api.paystack.co/transaction/initialize', {
+    const email = `cart-${cart_id}@smartcart-demo.com`;
+
+    const paystackResponse = await fetch('https://api.paystack.co/transaction/initialize', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${paystackSecret}`,
         'Content-Type': 'application/json',
       },
-        body: JSON.stringify({
-          email,
-          amount: session.totalCents,
-          currency: 'ZAR',
-          reference,
-          callback_url: `https://smart-cart-5qod.vercel.app/app.html?paid=true&cart_id=${cart_id}`,
-          metadata: {
-            cart_id,
-            session_id: session.id,
-      },
-    }),
+      body: JSON.stringify({
+        email: email,
+        amount: session.totalCents ?? 0,
+        currency: 'ZAR',
+        reference: reference,
+        callback_url: `https://smart-cart-5qod.vercel.app/app.html?paid=true&cart_id=${cart_id}`,
+        metadata: {
+          cart_id: cart_id,
+          session_id: session.id,
+        },
+      }),
+    });
 
-    const data = await response.json();
+    const data = await paystackResponse.json();
 
     if (!data.status) {
       console.error('[Paystack] Error:', data.message);
@@ -80,7 +82,7 @@ export async function POST(request: Request) {
       authorizationUrl: data.data.authorization_url,
       accessCode: data.data.access_code,
       reference: data.data.reference,
-      amountCents: session.totalCents,
+      amountCents: session.totalCents ?? 0,
       currency: 'ZAR',
       cartId: cart_id,
       sessionId: session.id,

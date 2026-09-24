@@ -14,16 +14,17 @@
 
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <SPI.h>
 #include <MFRC522.h>
 #include <ArduinoJson.h>
 
 // Wi-Fi Credentials
-const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* ssid = "TECNO SPARK Go 2";
+const char* password = "vddh30npbm211912";
 
 // Next.js API Endpoint URL
-const char* API_ENDPOINT  = "http://192.168.1.100:3000/api/hardware/scan-item";
+const char* API_ENDPOINT  = "https://smart-cart-5qod.vercel.app/api/hardware/scan-item";
 
 // Cart Identifier
 const char* CART_ID       = "CART_004";
@@ -44,9 +45,8 @@ void connectToWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
 
   Serial.print("Connecting to Wi-Fi: ");
-  Serial.println(WIFI_SSID);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) {
     delay(500);
@@ -75,8 +75,11 @@ void sendItemScanToAPI(String rfidTag, String action) {
     if (WiFi.status() != WL_CONNECTED) return;
   }
 
+    WiFiClientSecure client;
+  client.setInsecure();
+
   HTTPClient http;
-  http.begin(API_ENDPOINT);
+  http.begin(client, API_ENDPOINT);
   http.addHeader("Content-Type", "application/json");
 
   // Construct JSON Payload

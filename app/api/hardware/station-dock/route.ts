@@ -1,19 +1,18 @@
 import { NextResponse } from 'next/server';
-
 import { cartEventsBus } from '@/lib/events';
-
 import { prisma } from '@/lib/prisma';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { station_id, cart_rfid_tag } = body;
+    const { station_id, cart_rfid_tag, action = 'dock' } = body;
 
     if (!cart_rfid_tag) {
       return NextResponse.json({ error: 'cart_rfid_tag is required' }, { status: 400 });
     }
 
-    // Lookup Cart by stationRfidTag or direct cart ID
+    const isDocking = action !== 'undock';
+
     let cart = await prisma.cart.findFirst({
       where: {
         OR: [
@@ -24,26 +23,24 @@ export async function POST(request: Request) {
     });
 
     if (!cart) {
-      // Fallback: auto-create if new tag
       cart = await prisma.cart.create({
         data: {
           id: cart_rfid_tag,
           stationRfidTag: cart_rfid_tag,
-          status: 'docked',
-          lastDockedAt: new Date(),
+          status: isDocking ? 'docked' : 'available',
+          lastDockedAt: isDocking ? new Date() : null,
         },
       });
     } else {
       cart = await prisma.cart.update({
         where: { id: cart.id },
         data: {
-          status: 'docked',
-          lastDockedAt: new Date(),
+          status: isDocking ? 'docked' : 'active',
+          lastDockedAt: isDocking ? new Date() : undefined,
         },
       });
     }
 
-    // Lookup active session
     const session = await prisma.cartSession.findFirst({
       where: { cartId: cart.id, isActive: true },
       include: {
@@ -56,15 +53,14 @@ export async function POST(request: Request) {
     if (!session) {
       return NextResponse.json({
         success: true,
-        message: `Cart ${cart.id} docked, but no active shopping session exists`,
+        message: `Cart ${cart.id} ${isDocking ? 'docked' : 'undocked'}, but no active session exists`,
         cartId: cart.id,
       });
     }
 
-    // Update session docking status to true
     const updatedSession = await prisma.cartSession.update({
       where: { id: session.id },
-      data: { isDocked: true },
+      data: { isDocked: isDocking },
       include: {
         items: {
           include: { product: true },
@@ -72,13 +68,12 @@ export async function POST(request: Request) {
       },
     });
 
-    // Formatted payload for real-time SSE stream listeners
     const streamPayload = {
-      event: 'station_docked',
+      event: isDocking ? 'station_docked' : 'station_undocked',
       stationId: station_id || 'STATION_BASE_01',
       cartId: cart.id,
       sessionId: updatedSession.id,
-      isDocked: true,
+      isDocked: isDocking,
       subtotalCents: updatedSession.subtotalCents,
       taxCents: updatedSession.taxCents,
       totalCents: updatedSession.totalCents,
@@ -92,17 +87,19 @@ export async function POST(request: Request) {
       })),
     };
 
-    // Emit live SSE update event
     cartEventsBus.emit(`stream:${cart.id}`, streamPayload);
 
     return NextResponse.json({
       success: true,
-      message: `Cart ${cart.id} successfully docked at Base Station ${station_id || '01'}`,
+      message: `Cart ${cart.id} successfully ${isDocking ? 'docked at' : 'undocked from'} Base Station ${station_id || '01'}`,
       cartId: cart.id,
       session: streamPayload,
     });
   } catch (error: any) {
     console.error('Error in /api/hardware/station-dock:', error);
-    return NextResponse.json({ error: 'Internal Server Error', message: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Internal Server Error', message: error.message },
+      { status: 500 }
+    );
   }
 }

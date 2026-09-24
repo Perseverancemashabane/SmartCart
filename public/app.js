@@ -328,8 +328,39 @@ class UIController {
       this.showToast('Cart unpaired successfully', 'info');
     });
 
+    // UNPAIR BUTTON — resets server cart AND local state
     if (this.btnDisconnect) {
-      this.btnDisconnect.addEventListener('click', () => {
+      this.btnDisconnect.addEventListener('click', async () => {
+        const cartId = this.cartModule.cartId;
+        console.log(`[Unpair] Resetting cart ${cartId} on server...`);
+
+        if (cartId) {
+          try {
+            const isLocalhost = window.location.hostname === 'localhost';
+            const API_URL = isLocalhost ? 'http://localhost:3000' : 'https://smart-cart-5qod.vercel.app';
+
+            const response = await fetch(`${API_URL}/api/cart/reset`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cart_id: cartId })
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              console.log('[Unpair] Server reset result:', data);
+              this.showToast('Cart cleared and unpaired', 'info');
+            } else {
+              console.warn('[Unpair] Server error:', response.status);
+              this.showToast('Cart unpaired (server reset failed)', 'warning');
+            }
+          } catch (err) {
+            console.warn('[Unpair] Network error:', err);
+            this.showToast('Cart unpaired (network error)', 'warning');
+          }
+        }
+
+        // Unpair locally (clears UI)
+        this.cartModule.setDockedState(false);
         this.cartModule.unpairCart();
       });
     }

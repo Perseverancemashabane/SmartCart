@@ -29,7 +29,6 @@ class EventBus {
   }
 }
 
-// Global Application Event Bus Instance
 const appBus = new EventBus();
 
 
@@ -40,10 +39,10 @@ class CartStateModule {
   constructor(bus) {
     this.bus = bus;
     this.cartId = null;
-    this.items = []; // Array of { id, sku, name, price, quantity, icon }
+    this.items = [];
     this.isDockedAtStation = false;
-    this.paymentStatus = 'unpaid'; // 'unpaid' | 'processing' | 'paid'
-    this.vatRate = 0.15; // 15% South African VAT
+    this.paymentStatus = 'unpaid';
+    this.vatRate = 0.15;
   }
 
   pairCart(id) {
@@ -64,7 +63,6 @@ class CartStateModule {
   }
 
   addItem(itemData) {
-    // Check if item already exists by SKU
     const existing = this.items.find(i => i.sku === itemData.sku);
     let affectedItem;
 
@@ -124,7 +122,6 @@ class CartStateModule {
     this.setDockedState(!this.isDockedAtStation);
   }
 
-  // Financial Calculations
   getSubtotal() {
     return this.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   }
@@ -154,7 +151,6 @@ class CartStateModule {
     };
   }
 
-  // ZAR Currency Formatter Helper (R 150.00)
   static formatCurrency(amount) {
     const num = parseFloat(amount || 0);
     return 'R ' + num.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
@@ -163,7 +159,7 @@ class CartStateModule {
 
 
 // ==========================================================================
-// 3. QR Code Scanner Module (html5-qrcode integration)
+// 3. QR Code Scanner Module
 // ==========================================================================
 class QRScannerModule {
   constructor(bus) {
@@ -180,20 +176,16 @@ class QRScannerModule {
     this.inputCartId = document.getElementById('input-cart-id');
     this.btnPairManual = document.getElementById('btn-pair-manual');
 
-    // Bind event listeners
     if (this.btnStartQr) {
       this.btnStartQr.addEventListener('click', () => this.openScannerModal());
     }
-
     if (this.btnCloseQr) {
       this.btnCloseQr.addEventListener('click', () => this.closeScannerModal());
     }
-
     if (this.btnPairManual) {
       this.btnPairManual.addEventListener('click', () => this.handleManualPairing());
     }
 
-    // Quick preset buttons
     document.querySelectorAll('.chip-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const cartId = e.target.getAttribute('data-cart');
@@ -207,7 +199,6 @@ class QRScannerModule {
     if (!this.qrModal) return;
     this.qrModal.classList.remove('hidden');
 
-    // Initialize html5-qrcode
     try {
       if (typeof Html5Qrcode !== 'undefined') {
         this.html5QrcodeScanner = new Html5Qrcode("qr-reader");
@@ -217,9 +208,9 @@ class QRScannerModule {
           { facingMode: "environment" },
           config,
           (decodedText) => this.onScanSuccess(decodedText),
-          () => {} // Silent scan error
+          () => {}
         ).catch(err => {
-          console.warn("Camera access failed or unavailable:", err);
+          console.warn("Camera access failed:", err);
           this.showCameraFallbackNotice();
         });
         this.isScanning = true;
@@ -239,7 +230,7 @@ class QRScannerModule {
         <div style="padding: 30px; text-align: center; color: #94a3b8;">
           <i class="fa-solid fa-camera-slash" style="font-size: 36px; margin-bottom: 12px; color: #f59e0b;"></i>
           <p style="font-size: 0.9rem; font-weight: 600; color: #fff;">Camera Access Unavailable</p>
-          <p style="font-size: 0.78rem; margin-top: 6px;">Please use manual Cart ID entry or quick test chips.</p>
+          <p style="font-size: 0.78rem; margin-top: 6px;">Please use manual Cart ID entry.</p>
         </div>
       `;
     }
@@ -259,7 +250,6 @@ class QRScannerModule {
 
   onScanSuccess(decodedText) {
     this.closeScannerModal();
-    // Parse QR payload (extract cart_id if formatted like cart_id=CART_004)
     let cartId = decodedText.trim();
     if (cartId.includes('cart_id=')) {
       cartId = cartId.split('cart_id=')[1].split('&')[0];
@@ -294,27 +284,22 @@ class UIController {
   }
 
   initDOM() {
-    // Views
     this.viewPairing = document.getElementById('view-pairing');
     this.viewCart = document.getElementById('view-cart');
     this.modalPayment = document.getElementById('modal-payment');
     this.modalReceipt = document.getElementById('modal-receipt');
 
-    // Header & Info
     this.pairedCartIdDisplay = document.getElementById('paired-cart-id-display');
     this.btnDisconnect = document.getElementById('btn-disconnect');
     this.itemCountBadge = document.getElementById('cart-item-count-badge');
 
-    // Containers
     this.emptyCartState = document.getElementById('empty-cart-state');
     this.cartItemsContainer = document.getElementById('cart-items-container');
 
-    // Price summary
     this.summarySubtotal = document.getElementById('summary-subtotal');
     this.summaryVat = document.getElementById('summary-vat');
     this.summaryTotal = document.getElementById('summary-total');
 
-    // Station Banner & Checkout Button
     this.stationStatusBanner = document.getElementById('station-status-banner');
     this.stationIcon = document.getElementById('station-icon');
     this.stationStatusText = document.getElementById('station-status-text');
@@ -325,16 +310,43 @@ class UIController {
     this.checkoutBtnText = document.getElementById('checkout-btn-text');
     this.checkoutTooltip = document.getElementById('checkout-tooltip');
 
-    // Toast Container
     this.toastContainer = document.getElementById('toast-container');
   }
 
   bindEvents() {
-    // Cart Pairing Events
-    this.bus.on('cart:paired', (data) => {
+    // Cart Pairing — resets local state AND syncs from server
+    this.bus.on('cart:paired', async (data) => {
       if (this.pairedCartIdDisplay) this.pairedCartIdDisplay.textContent = `Cart #${data.cartId.replace('CART_', '')}`;
       this.switchView('view-cart');
       this.showToast(`Successfully paired with ${data.cartId}`, 'success');
+
+      // Reset local cart state on pair
+      this.cartModule.items = [];
+      this.cartModule.setDockedState(false);
+      this.bus.emit('cart:updated', this.cartModule.getStateSummary());
+
+      // Fetch fresh state from server
+      try {
+        const isLocalhost = window.location.hostname === 'localhost';
+        const API_URL = isLocalhost 
+          ? 'http://localhost:3000' 
+          : 'https://smart-cart-5qod.vercel.app';
+          
+        const response = await fetch(`${API_URL}/api/cart/pair`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cart_id: data.cartId })
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.session) {
+            this.cartModule.setDockedState(result.session.isDocked || false);
+          }
+        }
+      } catch (err) {
+        console.warn('[Pair] Failed to sync state from server:', err);
+      }
     });
 
     this.bus.on('cart:unpaired', () => {
@@ -348,7 +360,6 @@ class UIController {
       });
     }
 
-    // State Updates
     this.bus.on('cart:updated', (state) => this.renderCartState(state));
 
     this.bus.on('cart:item_added', (data) => {
@@ -365,7 +376,6 @@ class UIController {
       this.renderStationBanner(data.isDocked);
     });
 
-    // Checkout Button Click
     if (this.btnCheckout) {
       this.btnCheckout.addEventListener('click', () => {
         if (!this.cartModule.isDockedAtStation) {
@@ -380,7 +390,6 @@ class UIController {
       });
     }
 
-    // Generic Toast listener
     this.bus.on('ui:toast', (data) => this.showToast(data.message, data.type));
   }
 
@@ -399,12 +408,10 @@ class UIController {
   }
 
   renderCartState(state) {
-    // Update Item Count Pill
     if (this.itemCountBadge) {
       this.itemCountBadge.textContent = `${state.itemCount} ${state.itemCount === 1 ? 'item' : 'items'}`;
     }
 
-    // Toggle Empty State vs Items List
     if (state.items.length === 0) {
       if (this.emptyCartState) this.emptyCartState.classList.remove('hidden');
       if (this.cartItemsContainer) {
@@ -419,19 +426,16 @@ class UIController {
       }
     }
 
-    // Render Price Summaries
     if (this.summarySubtotal) this.summarySubtotal.textContent = CartStateModule.formatCurrency(state.subtotal);
     if (this.summaryVat) this.summaryVat.textContent = CartStateModule.formatCurrency(state.vatAmount);
     if (this.summaryTotal) this.summaryTotal.textContent = CartStateModule.formatCurrency(state.totalAmount);
 
-    // Update Checkout Button Locked / Unlocked State
     this.updateCheckoutButtonState(state.isDocked, state.items.length > 0);
   }
 
   renderItemsList(items) {
     if (!this.cartItemsContainer) return;
     
-    // Build DOM list
     this.cartItemsContainer.innerHTML = items.map(item => {
       const subtotal = item.price * item.quantity;
       return `
@@ -448,14 +452,12 @@ class UIController {
               </div>
             </div>
           </div>
-          
           <div class="item-right">
             <div class="quantity-controls">
-              <button class="btn-qty btn-minus" data-sku="${item.sku}" title="Decrease quantity"><i class="fa-solid fa-minus"></i></button>
+              <button class="btn-qty btn-minus" data-sku="${item.sku}" title="Decrease"><i class="fa-solid fa-minus"></i></button>
               <span class="qty-val">${item.quantity}</span>
-              <button class="btn-qty btn-plus" data-sku="${item.sku}" title="Increase quantity"><i class="fa-solid fa-plus"></i></button>
+              <button class="btn-qty btn-plus" data-sku="${item.sku}" title="Increase"><i class="fa-solid fa-plus"></i></button>
             </div>
-            
             <div class="item-pricing">
               <span class="item-subtotal-val">${CartStateModule.formatCurrency(subtotal)}</span>
               <span class="item-unit-price">${CartStateModule.formatCurrency(item.price)} ea</span>
@@ -465,7 +467,6 @@ class UIController {
       `;
     }).join('');
 
-    // Bind item quantity button clicks
     this.cartItemsContainer.querySelectorAll('.btn-minus').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const sku = e.currentTarget.getAttribute('data-sku');
@@ -486,7 +487,6 @@ class UIController {
     const card = document.getElementById(`card-${sku}`);
     if (card) {
       card.classList.remove('flash-add', 'flash-remove');
-      // Trigger reflow
       void card.offsetWidth;
       card.classList.add(animationClass);
     }
@@ -545,11 +545,7 @@ class UIController {
     if (type === 'warning') iconClass = 'fa-triangle-exclamation';
     if (type === 'error') iconClass = 'fa-circle-exclamation';
 
-    toast.innerHTML = `
-      <i class="fa-solid ${iconClass}"></i>
-      <span>${message}</span>
-    `;
-
+    toast.innerHTML = `<i class="fa-solid ${iconClass}"></i><span>${message}</span>`;
     this.toastContainer.appendChild(toast);
 
     setTimeout(() => {
@@ -589,7 +585,6 @@ class StripePaymentModule {
     this.payBtnText = document.getElementById('pay-btn-text');
     this.payBtnTotalVal = document.getElementById('pay-btn-total-val');
 
-    // Receipt Modal
     this.modalReceipt = document.getElementById('modal-receipt');
     this.receiptOrderRef = document.getElementById('receipt-order-ref');
     this.receiptTimestamp = document.getElementById('receipt-timestamp');
@@ -602,7 +597,6 @@ class StripePaymentModule {
 
   initStripe() {
     try {
-      // Use test key
       if (typeof Stripe !== 'undefined') {
         this.stripe = Stripe('pk_test_TYooMQbfWZsq259Y2yJuTLnY00w127vq0');
         const elements = this.stripe.elements();
@@ -615,10 +609,7 @@ class StripePaymentModule {
             fontSize: '16px',
             '::placeholder': { color: '#64748b' }
           },
-          invalid: {
-            color: '#ef4444',
-            iconColor: '#ef4444'
-          }
+          invalid: { color: '#ef4444', iconColor: '#ef4444' }
         };
 
         const cardContainer = document.getElementById('card-element');
@@ -635,7 +626,7 @@ class StripePaymentModule {
         this.renderFallbackCardInput();
       }
     } catch (e) {
-      console.warn('Stripe initialization fallback mode active:', e);
+      console.warn('Stripe fallback active:', e);
       this.renderFallbackCardInput();
     }
   }
@@ -686,17 +677,10 @@ class StripePaymentModule {
 
   async handlePaymentSubmit(e) {
     e.preventDefault();
-
-    // Show loading state
     this.setPaymentLoading(true);
-
-    // Simulate Payment Authorization delay
     await new Promise(resolve => setTimeout(resolve, 1600));
-
     this.setPaymentLoading(false);
     this.closePaymentModal();
-    
-    // Show digital receipt
     this.generateReceipt();
   }
 
@@ -746,7 +730,6 @@ class StripePaymentModule {
           ? 'http://localhost:3000' 
           : 'https://smart-cart-5qod.vercel.app';
 
-        // Call the reset endpoint
         const response = await fetch(`${API_URL}/api/cart/reset`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -764,14 +747,14 @@ class StripePaymentModule {
       }
     }
 
-    // NOW unpair locally — after server reset completes
+    // Unpair locally after server reset completes
     this.cartModule.unpairCart();
   }
 }
 
 
 // ==========================================================================
-// 6. Mock Live Feed & ESP32 Simulation Panel Module (Hidden by Default)
+// 6. Mock Live Feed & ESP32 Simulation Panel (Hidden by default)
 // ==========================================================================
 class MockLiveFeedModule {
   constructor(bus, cartModule) {
@@ -795,20 +778,18 @@ class MockLiveFeedModule {
     this.simDockText = document.getElementById('sim-dock-text');
     this.debugEventLog = document.getElementById('debug-event-log');
 
-    // Presets
     this.simPresetQuick = document.getElementById('sim-preset-quick');
     this.simPresetTrolley = document.getElementById('sim-preset-trolley');
     this.simRemoveRandom = document.getElementById('sim-remove-random');
     this.simClearAll = document.getElementById('sim-clear-all');
 
-    // Hide the debug panel by default
+    // Hide debug panel by default
     if (this.debugPanel) {
       this.debugPanel.style.display = 'none';
     }
   }
 
   setupKeyboardToggle() {
-    // Ctrl + Shift + D toggles the debug panel
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'D') {
         e.preventDefault();
@@ -825,40 +806,33 @@ class MockLiveFeedModule {
   }
 
   bindEvents() {
-    // Drawer Expand/Collapse
     if (this.debugHandle) {
       this.debugHandle.addEventListener('click', () => this.togglePanel());
     }
 
-    // Add item buttons
     document.querySelectorAll('.sim-add-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const sku = e.currentTarget.getAttribute('data-sku');
         const name = e.currentTarget.getAttribute('data-name');
         const price = parseFloat(e.currentTarget.getAttribute('data-price'));
-        
         this.cartModule.addItem({ sku, name, price });
         this.logMQTTEvent('rfid_scan', { action: 'ADD_ITEM', sku, name, price });
       });
     });
 
-    // Base Station Proximity Toggle
     if (this.simBtnToggleDock) {
       this.simBtnToggleDock.addEventListener('click', () => {
         this.cartModule.toggleDockedState();
         const isDocked = this.cartModule.isDockedAtStation;
-        
         if (this.simDockText) {
           this.simDockText.textContent = isDocked 
             ? 'Undock Cart (Set to In Aisle 🛒)' 
             : 'Simulate Station Docking (Unlock Pay ⚡)';
         }
-
         this.logMQTTEvent('station_gateway', { event: 'DOCK_STATUS', station_docked: isDocked });
       });
     }
 
-    // Presets
     if (this.simPresetQuick) {
       this.simPresetQuick.addEventListener('click', () => {
         this.cartModule.addItem({ sku: 'MILK-001', name: 'Organic Fresh Milk 2L', price: 32.50 });
@@ -941,10 +915,8 @@ document.addEventListener('DOMContentLoaded', () => {
     cartModule.pairCart(data.cartId);
   });
 
-      // ============================================================
+  // ============================================================
   // REAL-TIME CART SYNC — SSE with polling fallback
-  // Tries SSE for instant updates, falls back to 2s polling
-  // if the SSE connection fails or drops.
   // ============================================================
   const isLocalhost = window.location.hostname === 'localhost';
   const API_URL = isLocalhost 
@@ -955,16 +927,13 @@ document.addEventListener('DOMContentLoaded', () => {
   let sseWorking = false;
   let lastServerSignature = '';
 
-  // ---------- Apply server session to local cart ----------
   function applyServerSession(session) {
     if (!session) return;
 
-    // Sync docked state
     if (session.isDocked !== cartModule.isDockedAtStation) {
       cartModule.setDockedState(session.isDocked);
     }
 
-    // Build server items list
     const rawItems = session.items || [];
     const serverItems = rawItems.map(item => ({
       sku: item.sku,
@@ -986,14 +955,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ---------- Polling fallback ----------
   async function pollCart() {
     if (!cartModule.cartId) {
       setTimeout(pollCart, 2000);
       return;
     }
 
-    // Skip polling if SSE is confirmed working
     if (sseWorking) {
       setTimeout(pollCart, 2000);
       return;
@@ -1019,7 +986,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(pollCart, 2000);
   }
 
-  // ---------- SSE connection ----------
   function connectSSE(cartId) {
     if (sseConnection) {
       sseConnection.close();
@@ -1039,14 +1005,13 @@ document.addEventListener('DOMContentLoaded', () => {
       sseConnection.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data);
-          console.log('[SSE] Message:', payload);
 
           if (payload.event === 'connected') {
             sseWorking = true;
             return;
           }
 
-          if (payload.event === 'cart_updated' || payload.event === 'station_docked') {
+          if (payload.event === 'cart_updated' || payload.event === 'station_docked' || payload.event === 'station_undocked') {
             applyServerSession(payload);
           }
 
@@ -1054,11 +1019,11 @@ document.addEventListener('DOMContentLoaded', () => {
             cartModule.setDockedState(false);
           }
         } catch (err) {
-          console.warn('[SSE] Failed to parse event:', err);
+          console.warn('[SSE] Parse error:', err);
         }
       };
 
-      sseConnection.onerror = (err) => {
+      sseConnection.onerror = () => {
         console.warn('[SSE] Connection error — falling back to polling');
         sseWorking = false;
         if (sseConnection) {
@@ -1072,7 +1037,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ---------- Wire up to cart pairing ----------
   appBus.on('cart:paired', (data) => {
     connectSSE(data.cartId);
   });
@@ -1086,7 +1050,6 @@ document.addEventListener('DOMContentLoaded', () => {
     lastServerSignature = '';
   });
 
-  // ---------- Start polling as a fallback (always runs) ----------
   pollCart();
 
   console.log('SmartCart IoT Application Engine Started Successfully.');

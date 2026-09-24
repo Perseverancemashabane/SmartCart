@@ -31,6 +31,18 @@ export async function POST(request: Request) {
         },
       },
     });
+        // When re-pairing, always undock the cart
+    if (activeSession && activeSession.isDocked) {
+      activeSession = await prisma.cartSession.update({
+        where: { id: activeSession.id },
+        data: { isDocked: false },
+        include: {
+          items: {
+            include: { product: true },
+          },
+        },
+      });
+    }
 
     if (!activeSession) {
       activeSession = await prisma.cartSession.create({

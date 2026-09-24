@@ -53,17 +53,17 @@ export async function POST(request: Request) {
         'Authorization': `Bearer ${paystackSecret}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        email,
-        amount: session.totalCents ?? 0,
-        currency: 'ZAR',
-        reference,
-        metadata: {
-          cart_id,
-          session_id: session.id,
-        },
-      }),
-    });
+        body: JSON.stringify({
+          email,
+          amount: session.totalCents,
+          currency: 'ZAR',
+          reference,
+          callback_url: `https://smart-cart-5qod.vercel.app/app.html?paid=true&cart_id=${cart_id}`,
+          metadata: {
+            cart_id,
+            session_id: session.id,
+      },
+    }),
 
     const data = await response.json();
 

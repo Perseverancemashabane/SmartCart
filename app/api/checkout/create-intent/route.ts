@@ -46,8 +46,7 @@ export async function POST(request: Request) {
     }
 
     const reference = `SC-${cart_id}-${Date.now()}`;
-    const email = `cart-${cart_id}@smartcart.local`;
-
+   const email = `cart-${cart_id}@smartcart-demo.com`;
     const response = await fetch('https://api.paystack.co/transaction/initialize', {
       method: 'POST',
       headers: {

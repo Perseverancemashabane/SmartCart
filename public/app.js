@@ -314,39 +314,10 @@ class UIController {
   }
 
   bindEvents() {
-    // Cart Pairing — resets local state AND syncs from server
-    this.bus.on('cart:paired', async (data) => {
+    this.bus.on('cart:paired', (data) => {
       if (this.pairedCartIdDisplay) this.pairedCartIdDisplay.textContent = `Cart #${data.cartId.replace('CART_', '')}`;
       this.switchView('view-cart');
       this.showToast(`Successfully paired with ${data.cartId}`, 'success');
-
-      // Reset local cart state on pair
-      this.cartModule.items = [];
-      this.cartModule.setDockedState(false);
-      this.bus.emit('cart:updated', this.cartModule.getStateSummary());
-
-      // Fetch fresh state from server
-      try {
-        const isLocalhost = window.location.hostname === 'localhost';
-        const API_URL = isLocalhost 
-          ? 'http://localhost:3000' 
-          : 'https://smart-cart-5qod.vercel.app';
-          
-        const response = await fetch(`${API_URL}/api/cart/pair`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cart_id: data.cartId })
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success && result.session) {
-            this.cartModule.setDockedState(result.session.isDocked || false);
-          }
-        }
-      } catch (err) {
-        console.warn('[Pair] Failed to sync state from server:', err);
-      }
     });
 
     this.bus.on('cart:unpaired', () => {
@@ -747,7 +718,6 @@ class StripePaymentModule {
       }
     }
 
-    // Unpair locally after server reset completes
     this.cartModule.unpairCart();
   }
 }
@@ -783,7 +753,6 @@ class MockLiveFeedModule {
     this.simRemoveRandom = document.getElementById('sim-remove-random');
     this.simClearAll = document.getElementById('sim-clear-all');
 
-    // Hide debug panel by default
     if (this.debugPanel) {
       this.debugPanel.style.display = 'none';
     }
@@ -916,7 +885,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ============================================================
-  // REAL-TIME CART SYNC — Polling based (SSE has Vercel timeout issues)
+  // REAL-TIME CART SYNC — read-only polling endpoint
   // ============================================================
   const isLocalhost = window.location.hostname === 'localhost';
   const API_URL = isLocalhost 
@@ -943,7 +912,6 @@ document.addEventListener('DOMContentLoaded', () => {
       icon: 'fa-box'
     }));
 
-    // Build signature to detect changes
     const serverSignature = JSON.stringify(serverItems.map(i => 
       `${i.sku}|${i.name}|${i.price}|${i.quantity}`
     ));
@@ -959,7 +927,8 @@ document.addEventListener('DOMContentLoaded', () => {
   async function pollCart() {
     if (cartModule.cartId) {
       try {
-        const response = await fetch(`${API_URL}/api/cart/pair`, {
+        // Use the READ-ONLY sync endpoint — doesn't modify state
+        const response = await fetch(`${API_URL}/api/cart/sync`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cart_id: cartModule.cartId })
@@ -986,7 +955,6 @@ document.addEventListener('DOMContentLoaded', () => {
     lastServerSignature = '';
   });
 
-  // Start polling
   pollCart();
 
   console.log('SmartCart IoT Application Engine Started Successfully.');

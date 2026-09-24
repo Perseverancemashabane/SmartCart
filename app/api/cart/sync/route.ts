@@ -10,20 +10,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'cart_id is required' }, { status: 400 });
     }
 
-    // Upsert physical Cart record
-    const cart = await prisma.cart.upsert({
-      where: { id: cart_id },
-      update: { status: 'active' },
-      create: {
-        id: cart_id,
-        stationRfidTag: `STATION_TAG_${cart_id}`,
-        status: 'active',
-      },
-    });
-
-    // Check for an active session
-    let activeSession = await prisma.cartSession.findFirst({
-      where: { cartId: cart.id, isActive: true },
+    // READ-ONLY: Just fetch the state, don't modify anything
+    const activeSession = await prisma.cartSession.findFirst({
+      where: { cartId: cart_id, isActive: true },
       include: {
         items: {
           include: { product: true },
@@ -31,28 +20,17 @@ export async function POST(request: Request) {
       },
     });
 
-    // If no active session exists, create a fresh one
     if (!activeSession) {
-      activeSession = await prisma.cartSession.create({
-        data: {
-          cartId: cart.id,
-          isActive: true,
-          isDocked: false,
-          subtotalCents: 0,
-          taxCents: 0,
-          totalCents: 0,
-        },
-        include: {
-          items: {
-            include: { product: true },
-          },
-        },
+      return NextResponse.json({
+        success: true,
+        cartId: cart_id,
+        session: null,
       });
     }
 
     return NextResponse.json({
       success: true,
-      cartId: cart.id,
+      cartId: cart_id,
       session: {
         id: activeSession.id,
         isActive: activeSession.isActive,
@@ -71,7 +49,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (error: any) {
-    console.error('Error in /api/cart/pair:', error);
+    console.error('Error in /api/cart/sync:', error);
     return NextResponse.json(
       { error: 'Internal Server Error', message: error.message },
       { status: 500 }

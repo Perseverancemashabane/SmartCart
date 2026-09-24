@@ -650,13 +650,35 @@ class StripePaymentModule {
     if (this.modalPayment) this.modalPayment.classList.add('hidden');
   }
 
-  async handlePaymentSubmit(e) {
+    async handlePaymentSubmit(e) {
     e.preventDefault();
     this.setPaymentLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1600));
-    this.setPaymentLoading(false);
-    this.closePaymentModal();
-    this.generateReceipt();
+
+    try {
+      const isLocalhost = window.location.hostname === 'localhost';
+      const API_URL = isLocalhost ? 'http://localhost:3000' : 'https://smart-cart-5qod.vercel.app';
+
+      const response = await fetch(`${API_URL}/api/checkout/create-intent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cart_id: this.cartModule.cartId })
+      });
+
+      const data = await response.json();
+
+      if (!data.success || !data.authorizationUrl) {
+        throw new Error(data.error || data.message || 'Payment initialization failed');
+      }
+
+      window.location.href = data.authorizationUrl;
+
+    } catch (err) {
+      console.error('[Payment] Error:', err);
+      this.setPaymentLoading(false);
+      if (this.cardErrors) {
+        this.cardErrors.textContent = err.message;
+      }
+    }
   }
 
   setPaymentLoading(isLoading) {

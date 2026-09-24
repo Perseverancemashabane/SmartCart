@@ -1,11 +1,5 @@
 import { NextResponse } from 'next/server';
-
-import Stripe from 'stripe';
-
 import { prisma } from '@/lib/prisma';
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock_secret_key', {
-  apiVersion: '2023-10-16' as any,
-});
 
 export async function POST(request: Request) {
   try {
@@ -16,7 +10,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'cart_id is required' }, { status: 400 });
     }
 
-    // Lookup active CartSession
     const session = await prisma.cartSession.findFirst({
       where: { cartId: cart_id, isActive: true },
       include: { items: true },
@@ -26,7 +19,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `No active session found for cart ${cart_id}` }, { status: 404 });
     }
 
-    // Validate that cart is physically docked at base station
     if (!session.isDocked) {
       return NextResponse.json({
         error: 'Cart must be docked at the base station to enable payment.',
@@ -34,32 +26,61 @@ export async function POST(request: Request) {
       }, { status: 403 });
     }
 
-   if ((session.totalCents ?? 0) <= 0) {
+    if (session.totalCents <= 0) {
       return NextResponse.json({ error: 'Cart total must be greater than zero to checkout.' }, { status: 400 });
     }
 
-    // Create Stripe PaymentIntent in ZAR currency
-    let clientSecret = 'mock_client_secret_demo';
-    let paymentIntentId = 'pi_mock_' + Date.now();
+    const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
 
-    if (process.env.STRIPE_SECRET_KEY) {
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: session.totalCents ?? 0,
-        currency: 'zar',
-        description: `SmartCart ${cart_id} Checkout Payment`,
-        metadata: {
-          sessionId: session.id,
-          cartId: cart_id,
-        },
+    if (!paystackSecret) {
+      return NextResponse.json({
+        success: true,
+        clientSecret: 'mock_client_secret_demo',
+        paymentIntentId: 'mock_' + Date.now(),
+        amountCents: session.totalCents,
+        currency: 'ZAR',
+        cartId: cart_id,
+        sessionId: session.id,
+        mock: true,
       });
-      clientSecret = paymentIntent.client_secret || '';
-      paymentIntentId = paymentIntent.id;
+    }
+
+    const reference = `SC-${cart_id}-${Date.now()}`;
+    const email = `cart-${cart_id}@smartcart.local`;
+
+    const response = await fetch('https://api.paystack.co/transaction/initialize', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${paystackSecret}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email,
+        amount: session.totalCents,
+        currency: 'ZAR',
+        reference,
+        metadata: {
+          cart_id,
+          session_id: session.id,
+        },
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!data.status) {
+      console.error('[Paystack] Error:', data.message);
+      return NextResponse.json({
+        error: 'Paystack initialization failed',
+        message: data.message,
+      }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
-      clientSecret,
-      paymentIntentId,
+      authorizationUrl: data.data.authorization_url,
+      accessCode: data.data.access_code,
+      reference: data.data.reference,
       amountCents: session.totalCents,
       currency: 'ZAR',
       cartId: cart_id,
@@ -67,6 +88,9 @@ export async function POST(request: Request) {
     });
   } catch (error: any) {
     console.error('Error in /api/checkout/create-intent:', error);
-    return NextResponse.json({ error: 'Internal Server Error', message: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Internal Server Error', message: error.message },
+      { status: 500 }
+    );
   }
 }

@@ -880,8 +880,28 @@ document.addEventListener('DOMContentLoaded', () => {
   const stripePayment = new StripePaymentModule(appBus, cartModule, uiController);
   const mockFeed = new MockLiveFeedModule(appBus, cartModule);
 
-  appBus.on('qr:scanned', (data) => {
-    cartModule.pairCart(data.cartId);
+   appBus.on('qr:scanned', async (data) => {
+    // Call the API first to create/retrieve the session
+    try {
+      const response = await fetch(`${API_URL}/api/cart/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cart_id: data.cartId })
+      });
+      
+      if (!response.ok) {
+        console.error('[Pair] API error:', response.status);
+        return;
+      }
+      
+      const result = await response.json();
+      console.log('[Pair] Session created:', result.session?.id);
+      
+      // Now update local state
+      cartModule.pairCart(data.cartId);
+    } catch (err) {
+      console.error('[Pair] Fetch failed:', err);
+    }
   });
 
   // ============================================================

@@ -1014,6 +1014,38 @@ document.addEventListener('DOMContentLoaded', () => {
     lastServerSignature = '';
   });
 
+    // ============================================================
+  // HANDLE PAYSTACK CALLBACK — ?paid=true&cart_id=CART_004
+  // ============================================================
+  const urlParams = new URLSearchParams(window.location.search);
+  const paid = urlParams.get('paid');
+  const paidCartId = urlParams.get('cart_id');
+
+  if (paid === 'true' && paidCartId) {
+    console.log('[Paystack] Payment confirmed for', paidCartId);
+    
+    // Call reset endpoint to close the session and clear items
+    fetch(`${API_URL}/api/cart/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cart_id: paidCartId })
+    })
+    .then(r => r.json())
+    .then(data => {
+      console.log('[Paystack] Reset result:', data);
+      // Clean the URL (remove the query params)
+      window.history.replaceState({}, '', window.location.pathname);
+      // Show success toast
+      appBus.emit('ui:toast', { 
+        message: 'Payment successful! Cart reset.', 
+        type: 'success' 
+      });
+    })
+    .catch(err => {
+      console.error('[Paystack] Reset failed:', err);
+    });
+  }
+
   pollCart();
 
   console.log('SmartCart IoT Application Engine Started Successfully.');

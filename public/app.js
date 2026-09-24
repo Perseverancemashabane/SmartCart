@@ -733,9 +733,32 @@ class StripePaymentModule {
     this.ui.showToast('Payment Authorized & Cleared!', 'success');
   }
 
-  resetAndFinish() {
+    async resetAndFinish() {
     if (this.modalReceipt) this.modalReceipt.classList.add('hidden');
+
+    const cartId = this.cartModule.cartId;
+
+    // Unpair locally first (instant UI feedback)
     this.cartModule.unpairCart();
+
+    // Tell the server to reset the session (fire-and-forget)
+    if (cartId) {
+      try {
+        const isLocalhost = window.location.hostname === 'localhost';
+        const API_URL = isLocalhost 
+          ? 'http://localhost:3000' 
+          : 'https://smart-cart-5qod.vercel.app';
+
+        await fetch(`${API_URL}/api/cart/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cart_id: cartId })
+        });
+        console.log(`[Reset] Cart ${cartId} reset on server`);
+      } catch (err) {
+        console.warn('[Reset] Failed to reset cart on server:', err);
+      }
+    }
   }
 }
 

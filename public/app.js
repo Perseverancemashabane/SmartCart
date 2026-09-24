@@ -894,8 +894,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let lastServerSignature = '';
 
-  function applyServerSession(session) {
-    if (!session) return;
+   function applyServerSession(session) {
+    if (!session) {
+      // No active session — reset local state
+      if (cartModule.items.length > 0 || cartModule.isDockedAtStation) {
+        cartModule.items = [];
+        cartModule.setDockedState(false);
+        lastServerSignature = '';
+        appBus.emit('cart:updated', cartModule.getStateSummary());
+        console.log('[Sync] No session — local state cleared');
+      }
+      return;
+    }
 
     // Sync docked state
     if (session.isDocked !== cartModule.isDockedAtStation) {
@@ -934,12 +944,12 @@ document.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify({ cart_id: cartModule.cartId })
         });
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.session) {
-            applyServerSession(data.session);
-          }
+             if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          applyServerSession(data.session);
         }
+      }
       } catch (err) {
         console.warn('[Poll] Error:', err);
       }

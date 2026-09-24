@@ -114,7 +114,9 @@ class CartStateModule {
   }
 
   setDockedState(isDocked) {
-    this.isDockedAtStation = Boolean(isDocked);
+    const newState = Boolean(isDocked);
+    if (this.isDockedAtStation === newState) return; // no change, skip
+    this.isDockedAtStation = newState;
     this.bus.emit('station:changed', { isDocked: this.isDockedAtStation });
   }
 
@@ -318,6 +320,8 @@ class UIController {
       if (this.pairedCartIdDisplay) this.pairedCartIdDisplay.textContent = `Cart #${data.cartId.replace('CART_', '')}`;
       this.switchView('view-cart');
       this.showToast(`Successfully paired with ${data.cartId}`, 'success');
+      // Force the station banner to show the current state (from server sync)
+      this.renderStationBanner(this.cartModule.isDockedAtStation);
     });
 
     this.bus.on('cart:unpaired', () => {
@@ -718,6 +722,8 @@ class StripePaymentModule {
       }
     }
 
+    // Reset local dock state immediately
+    this.cartModule.setDockedState(false);
     this.cartModule.unpairCart();
   }
 }
@@ -921,6 +927,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function applyServerSession(session) {
     if (!session) {
+      // No active session — clear local state
       if (cartModule.items.length > 0 || cartModule.isDockedAtStation) {
         cartModule.items = [];
         cartModule.setDockedState(false);
@@ -931,9 +938,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (session.isDocked !== cartModule.isDockedAtStation) {
-      cartModule.setDockedState(session.isDocked);
-    }
+    // ALWAYS sync dock state from server (removed the != check)
+    cartModule.setDockedState(Boolean(session.isDocked));
 
     const rawItems = session.items || [];
     const serverItems = rawItems.map(item => ({

@@ -8,14 +8,15 @@ datasource db {
 }
 
 model Product {
-  id            Int        @id @default(autoincrement())
-  rfidTagId     String     @unique @map("rfid_tag_id") @db.VarChar(50)
-  name          String     @db.VarChar(200)
-  priceCents    Int        @map("price_cents")
-  stockQuantity Int?       @default(0) @map("stock_quantity")
-  createdAt     DateTime?  @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt     DateTime?  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  id            Int                @id @default(autoincrement())
+  rfidTagId     String             @unique @map("rfid_tag_id") @db.VarChar(50)
+  name          String             @db.VarChar(200)
+  priceCents    Int                @map("price_cents")
+  stockQuantity Int?               @default(0) @map("stock_quantity")
+  createdAt     DateTime?          @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime?          @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
   cartItems     CartItem[]
+  shoppingItems ShoppingListItem[]
 
   @@map("products")
 }
@@ -34,6 +35,7 @@ model Cart {
 model CartSession {
   id            Int           @id @default(autoincrement())
   cartId        String        @map("cart_id") @db.VarChar(50)
+  customerId    Int?          @map("customer_id")
   isActive      Boolean?      @default(true) @map("is_active")
   isDocked      Boolean?      @default(false) @map("is_docked")
   subtotalCents Int?          @default(0) @map("subtotal_cents")
@@ -43,6 +45,7 @@ model CartSession {
   closedAt      DateTime?     @map("closed_at") @db.Timestamp(6)
   items         CartItem[]
   cart          Cart          @relation(fields: [cartId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer      Customer?     @relation(fields: [customerId], references: [id])
   transactions  Transaction[]
 
   @@map("cart_sessions")
@@ -89,4 +92,59 @@ model scans {
   name       String?   @db.VarChar(100)
   price      Decimal?  @db.Decimal(10, 2)
   scanned_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model Customer {
+  id                   Int                 @id @default(autoincrement())
+  phoneNumber          String              @unique @map("phone_number") @db.VarChar(20)
+  email                String?             @unique @db.VarChar(200)
+  name                 String?             @db.VarChar(100)
+  walletBalanceCents   Int                 @default(0) @map("wallet_balance_cents")
+  pinHash              String?             @map("pin_hash") @db.VarChar(100)
+  failedLoginAttempts  Int                 @default(0) @map("failed_login_attempts")
+  lockedUntil          DateTime?           @map("locked_until") @db.Timestamp(6)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamp(6)
+  cartSessions         CartSession[]
+  walletTransactions   WalletTransaction[]
+  shoppingLists        ShoppingList[]
+
+  @@map("customers")
+}
+
+model WalletTransaction {
+  id          Int      @id @default(autoincrement())
+  customerId  Int      @map("customer_id")
+  amountCents Int      @map("amount_cents")
+  type        String   @db.VarChar(20)
+  status      String   @default("completed") @db.VarChar(20)
+  reference   String?  @db.VarChar(100)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  customer    Customer @relation(fields: [customerId], references: [id])
+
+  @@map("wallet_transactions")
+}
+
+model ShoppingList {
+  id          Int                @id @default(autoincrement())
+  customerId  Int                @map("customer_id")
+  name        String?            @db.VarChar(100)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamp(6)
+  completedAt DateTime?          @map("completed_at") @db.Timestamp(6)
+  customer    Customer           @relation(fields: [customerId], references: [id])
+  items       ShoppingListItem[]
+
+  @@map("shopping_lists")
+}
+
+model ShoppingListItem {
+  id        Int          @id @default(autoincrement())
+  listId    Int          @map("list_id")
+  productId Int          @map("product_id")
+  quantity  Int          @default(1)
+  isScanned Boolean      @default(false) @map("is_scanned")
+  scannedAt DateTime?    @map("scanned_at") @db.Timestamp(6)
+  list      ShoppingList @relation(fields: [listId], references: [id])
+  product   Product      @relation(fields: [productId], references: [id])
+
+  @@map("shopping_list_items")
 }

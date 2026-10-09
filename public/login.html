@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartCart — Login</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 40px 32px;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 8px; }
+    .subtitle { color: #94a3b8; font-size: 0.9rem; margin-bottom: 28px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 24px; background: #0f172a; padding: 4px; border-radius: 10px; }
+    .tab {
+      flex: 1; padding: 10px; text-align: center; cursor: pointer;
+      border-radius: 8px; font-weight: 600; font-size: 0.9rem;
+      color: #94a3b8; transition: all 0.2s;
+    }
+    .tab.active { background: #3b82f6; color: white; }
+    .field { margin-bottom: 16px; }
+    label { display: block; font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px; font-weight: 500; }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      color: #f8fafc;
+      font-size: 1rem;
+      outline: none;
+      transition: border 0.2s;
+    }
+    input:focus { border-color: #3b82f6; }
+    input::placeholder { color: #64748b; }
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus {
+      -webkit-text-fill-color: #f8fafc;
+      -webkit-box-shadow: 0 0 0px 1000px #0f172a inset;
+      transition: background-color 5000s ease-in-out 0s;
+    }
+    .btn {
+      width: 100%;
+      padding: 14px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #2563eb; }
+    .btn:disabled { background: #475569; cursor: not-allowed; }
+    .error {
+      color: #f87171; font-size: 0.85rem; margin-top: 12px;
+      padding: 10px; background: rgba(248,113,113,0.1);
+      border-radius: 8px; display: none;
+    }
+    .error.show { display: block; }
+    .success {
+      color: #4ade80; font-size: 0.85rem; margin-top: 12px;
+      padding: 10px; background: rgba(74,222,128,0.1);
+      border-radius: 8px; display: none;
+    }
+    .success.show { display: block; }
+    .footer { text-align: center; margin-top: 20px; font-size: 0.85rem; color: #64748b; }
+    .footer a { color: #60a5fa; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>SmartCart</h1>
+    <p class="subtitle">Sign in to your account</p>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="login">Login</div>
+      <div class="tab" data-tab="register">Register</div>
+    </div>
+
+    <form id="auth-form" autocomplete="off">
+      <div class="field">
+        <label for="phone">Phone Number</label>
+        <input
+          type="tel"
+          id="phone"
+          name="phone_field"
+          placeholder="e.g. 0821234567"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          required
+        />
+      </div>
+
+      <div class="field" id="email-field" style="display:none;">
+        <label for="email">Email Address</label>
+        <input
+          type="email"
+          id="email"
+          name="email_field"
+          placeholder="you@example.com"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+        />
+      </div>
+
+      <div class="field" id="name-field" style="display:none;">
+        <label for="name">Name (optional)</label>
+        <input
+          type="text"
+          id="name"
+          name="name_field"
+          placeholder="Your name"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+        />
+      </div>
+
+      <div class="field">
+        <label for="pin">PIN (4–6 digits)</label>
+        <input
+          type="password"
+          id="pin"
+          name="pin_field"
+          placeholder="••••"
+          inputmode="numeric"
+          pattern="\d{4,6}"
+          maxlength="6"
+          autocomplete="new-password"
+          required
+        />
+      </div>
+
+      <button type="submit" class="btn" id="submit-btn">Log In</button>
+    </form>
+
+    <div class="error" id="error-msg"></div>
+    <div class="success" id="success-msg"></div>
+
+    <div class="footer">
+      <a href="/app.html">← Back to app</a>
+    </div>
+  </div>
+
+  <script>
+    const API = window.location.origin;
+    let mode = 'login';
+
+    const tabs = document.querySelectorAll('.tab');
+    const form = document.getElementById('auth-form');
+    const phoneInput = document.getElementById('phone');
+    const emailInput = document.getElementById('email');
+    const pinInput = document.getElementById('pin');
+    const nameInput = document.getElementById('name');
+    const emailField = document.getElementById('email-field');
+    const nameField = document.getElementById('name-field');
+    const submitBtn = document.getElementById('submit-btn');
+    const errorMsg = document.getElementById('error-msg');
+    const successMsg = document.getElementById('success-msg');
+
+    function clearFields() {
+      phoneInput.value = '';
+      emailInput.value = '';
+      pinInput.value = '';
+      nameInput.value = '';
+      hideMessages();
+    }
+
+    window.addEventListener('load', () => {
+      setTimeout(clearFields, 50);
+      setTimeout(clearFields, 250);
+    });
+
+    if (document.readyState === 'complete') {
+      clearFields();
+    }
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        mode = tab.dataset.tab;
+        tabs.forEach(t => t.classList.toggle('active', t === tab));
+        emailField.style.display = mode === 'register' ? 'block' : 'none';
+        nameField.style.display = mode === 'register' ? 'block' : 'none';
+        submitBtn.textContent = mode === 'register' ? 'Create Account' : 'Log In';
+        clearFields();
+      });
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideMessages();
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Please wait…';
+
+      const payload = {
+        phone_number: phoneInput.value.trim(),
+        pin: pinInput.value.trim(),
+      };
+      if (mode === 'register') {
+        payload.email = emailInput.value.trim();
+        const nameVal = nameInput.value.trim();
+        if (nameVal) payload.name = nameVal;
+      }
+
+      try {
+        const res = await fetch(`${API}/api/auth/${mode}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showError(data.error || 'Something went wrong');
+          return;
+        }
+
+        showSuccess(mode === 'register' ? 'Account created! Redirecting…' : 'Logged in! Redirecting…');
+        setTimeout(() => { window.location.href = '/app.html'; }, 800);
+      } catch (err) {
+        showError('Network error. Please try again.');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = mode === 'register' ? 'Create Account' : 'Log In';
+      }
+    });
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+      errorMsg.classList.add('show');
+    }
+    function showSuccess(msg) {
+      successMsg.textContent = msg;
+      successMsg.classList.add('show');
+    }
+    function hideMessages() {
+      errorMsg.classList.remove('show');
+      successMsg.classList.remove('show');
+    }
+  </script>
+</body>
+</html>

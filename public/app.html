@@ -5,32 +5,399 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>SmartCart IoT - Real-time Shopping System</title>
   
-  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
-  
-  <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  
-  <!-- Custom CSS -->
   <link rel="stylesheet" href="style.css">
   
-  <!-- External Libraries (CDNs) -->
-  <!-- html5-qrcode for Camera QR Scanning -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
-  <!-- Stripe JS SDK -->
-  <script src="https://js.stripe.com/v3/"></script>
+
+  <style>
+    /* Auth badge */
+    .user-badge-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-left: auto;
+      margin-right: 12px;
+    }
+    .user-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: rgba(59,130,246,0.15);
+      border: 1px solid rgba(59,130,246,0.3);
+      border-radius: 20px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #93c5fd;
+      white-space: nowrap;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .user-badge:hover { background: rgba(59,130,246,0.25); }
+    .user-badge i { font-size: 0.9rem; }
+    .user-badge .wallet-pill {
+      background: rgba(74,222,128,0.15);
+      color: #4ade80;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.78rem;
+    }
+    .btn-logout {
+      padding: 6px 12px;
+      background: rgba(248,113,113,0.15);
+      color: #f87171;
+      border: 1px solid rgba(248,113,113,0.3);
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: inherit;
+    }
+    .btn-logout:hover { background: rgba(248,113,113,0.25); }
+    .btn-login-link {
+      padding: 6px 14px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 20px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-login-link:hover { background: #2563eb; }
+
+    /* Dev panel */
+    .dev-pairing-panel {
+      margin-top: 24px;
+      padding: 16px;
+      background: rgba(245,158,11,0.08);
+      border: 1px dashed rgba(245,158,11,0.4);
+      border-radius: 12px;
+    }
+    .dev-pairing-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #f59e0b;
+      margin-bottom: 10px;
+    }
+    .dev-pairing-note {
+      font-size: 0.72rem;
+      color: #fbbf24;
+      opacity: 0.8;
+      margin-top: 8px;
+      font-style: italic;
+    }
+
+    /* Payment Modal */
+    .payment-method-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.9);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+    .payment-method-modal.show { display: flex; }
+    .payment-modal-card {
+      background: #1e293b;
+      border-radius: 20px;
+      padding: 32px 28px;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }
+    .payment-modal-card h2 {
+      font-size: 1.4rem;
+      margin-bottom: 6px;
+      text-align: center;
+    }
+    .payment-modal-sub {
+      color: #94a3b8;
+      text-align: center;
+      font-size: 0.9rem;
+      margin-bottom: 24px;
+    }
+    .payment-total-box {
+      background: rgba(59,130,246,0.1);
+      border: 1px solid rgba(59,130,246,0.3);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 24px;
+      text-align: center;
+    }
+    .payment-total-label {
+      font-size: 0.78rem;
+      color: #93c5fd;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .payment-total-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .pay-method-btn {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+    .pay-method-btn:last-of-type { margin-bottom: 0; }
+    .pay-method-btn.wallet {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+    }
+    .pay-method-btn.wallet:hover { background: linear-gradient(135deg, #059669, #047857); }
+    .pay-method-btn.paystack {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #f8fafc;
+    }
+    .pay-method-btn.paystack:hover { background: #334155; }
+    .pay-method-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .payment-cancel-btn {
+      width: 100%;
+      padding: 12px;
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      font-size: 0.9rem;
+      cursor: pointer;
+      margin-top: 16px;
+      font-family: inherit;
+    }
+    .payment-cancel-btn:hover { color: #cbd5e1; }
+
+    /* PIN Modal */
+    .pin-entry-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.95);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1100;
+      padding: 20px;
+    }
+    .pin-entry-modal.show { display: flex; }
+    .pin-modal-card {
+      background: #1e293b;
+      border-radius: 20px;
+      padding: 32px 28px;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }
+    .pin-modal-card h2 {
+      font-size: 1.3rem;
+      margin-bottom: 6px;
+      text-align: center;
+    }
+    .pin-modal-sub {
+      color: #94a3b8;
+      text-align: center;
+      font-size: 0.85rem;
+      margin-bottom: 24px;
+    }
+    .pin-display {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    .pin-digit {
+      width: 44px;
+      height: 56px;
+      background: #0f172a;
+      border: 2px solid #334155;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      color: #f8fafc;
+      font-weight: 600;
+    }
+    .pin-digit.filled {
+      border-color: #10b981;
+      background: rgba(16,185,129,0.1);
+      color: #10b981;
+    }
+    .pin-digit.active {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.3);
+    }
+    .pin-error {
+      color: #f87171;
+      font-size: 0.85rem;
+      text-align: center;
+      margin-bottom: 16px;
+      min-height: 20px;
+    }
+    .pin-numpad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .pin-key {
+      padding: 16px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      color: #f8fafc;
+      font-size: 1.3rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+    .pin-key:hover { background: #334155; }
+    .pin-key:active { transform: scale(0.95); }
+    .pin-key.clear { color: #f87171; }
+    .pin-key.confirm {
+      background: #10b981;
+      color: white;
+      border-color: #10b981;
+    }
+    .pin-key.confirm:hover { background: #059669; }
+    .pin-key.confirm:disabled {
+      background: #475569;
+      border-color: #475569;
+      cursor: not-allowed;
+    }
+
+    /* Login gate */
+    .login-gate {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.97);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      padding: 20px;
+    }
+    .login-gate.show { display: flex; }
+    .login-gate-card {
+      background: #1e293b;
+      border-radius: 20px;
+      padding: 40px 32px;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }
+    .login-gate-card i {
+      font-size: 3rem;
+      color: #f59e0b;
+      margin-bottom: 16px;
+    }
+    .login-gate-card h2 {
+      font-size: 1.4rem;
+      margin-bottom: 8px;
+    }
+    .login-gate-card p {
+      color: #94a3b8;
+      font-size: 0.9rem;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+    .login-gate-btn {
+      display: inline-block;
+      padding: 14px 32px;
+      background: #3b82f6;
+      color: white;
+      border-radius: 12px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 1rem;
+      transition: background 0.2s;
+    }
+    .login-gate-btn:hover { background: #2563eb; }
+
+    /* Dynamic product buttons */
+    .sim-items-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .sim-add-btn {
+      padding: 10px 12px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #f8fafc;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: left;
+      font-family: inherit;
+      line-height: 1.3;
+    }
+    .sim-add-btn:hover { background: #334155; border-color: #3b82f6; }
+    .sim-add-btn:active { transform: scale(0.97); }
+    .sim-loading, .sim-empty, .sim-error {
+      grid-column: 1 / -1;
+      padding: 12px;
+      text-align: center;
+      font-size: 0.85rem;
+      color: #64748b;
+    }
+    .sim-error { color: #f87171; }
+  </style>
 </head>
 <body>
 
-  <!-- Toast Container -->
+  <!-- Login Required Gate -->
+  <div id="login-gate" class="login-gate">
+    <div class="login-gate-card">
+      <i class="fa-solid fa-lock"></i>
+      <h2>Login Required</h2>
+      <p>You must be logged in to pair a cart, scan items, and check out. Please log in to continue.</p>
+      <a href="/login.html" class="login-gate-btn">
+        <i class="fa-solid fa-right-to-bracket"></i> Go to Login
+      </a>
+    </div>
+  </div>
+
   <div id="toast-container" class="toast-container"></div>
 
-  <!-- App Wrapper -->
   <div class="app-wrapper">
 
-    <!-- VIEW 1: WELCOME & CART PAIRING SCREEN -->
+    <!-- VIEW 1: PAIRING -->
     <section id="view-pairing" class="view view-active">
       <header class="app-brand-header">
         <div class="brand-logo">
@@ -40,6 +407,7 @@
             <p>FreshCart Supermarket Express</p>
           </div>
         </div>
+        <div class="user-badge-wrapper" id="auth-badge-pairing"></div>
         <div class="system-status">
           <span class="pulse-dot active"></span>
           <span class="status-text">Station Gateway Online</span>
@@ -59,32 +427,28 @@
             <button id="btn-start-qr" class="btn btn-primary btn-lg btn-glow">
               <i class="fa-solid fa-camera"></i> Scan Cart QR Code
             </button>
-            
-            <div class="divider">
-              <span>OR ENTER MANUALLY FOR TESTING</span>
-            </div>
 
-            <div class="manual-input-group">
-              <div class="input-with-icon">
-                <i class="fa-solid fa-barcode"></i>
-                <input type="text" id="input-cart-id" placeholder="e.g. CART_004" autocomplete="off" spellcheck="false" value="CART_004">
+            <!-- DEV/TESTING ONLY — remove before production demo -->
+            <div class="dev-pairing-panel">
+              <div class="dev-pairing-label">
+                <i class="fa-solid fa-flask"></i> Developer Testing Mode
               </div>
-              <button id="btn-pair-manual" class="btn btn-secondary">
-                <i class="fa-solid fa-link"></i> Pair Cart
-              </button>
+              <div class="manual-input-group">
+                <div class="input-with-icon">
+                  <i class="fa-solid fa-barcode"></i>
+                  <input type="text" id="input-cart-id" placeholder="e.g. CART_004" autocomplete="off" spellcheck="false" value="CART_004">
+                </div>
+                <button id="btn-pair-manual" class="btn btn-secondary">
+                  <i class="fa-solid fa-link"></i> Pair Cart
+                </button>
+              </div>
+              <p class="dev-pairing-note">Remove this panel before the production demo.</p>
             </div>
-
-            <div class="quick-preset-carts">
-              <span class="preset-label">Quick Test IDs:</span>
-              <button class="chip-btn" data-cart="CART_001">CART_001</button>
-              <button class="chip-btn" data-cart="CART_004">CART_004</button>
-              <button class="chip-btn" data-cart="CART_042">CART_042</button>
-            </div>
+            <!-- END DEV/TESTING ONLY -->
           </div>
         </div>
       </main>
 
-      <!-- QR Scanner Camera Modal -->
       <div id="qr-modal" class="modal-overlay hidden">
         <div class="modal-card glass-panel">
           <div class="modal-header">
@@ -99,8 +463,7 @@
       </div>
     </section>
 
-
-    <!-- VIEW 2: ACTIVE SHOPPING & LIVE CART DASHBOARD -->
+    <!-- VIEW 2: ACTIVE SHOPPING -->
     <section id="view-cart" class="view hidden">
       <header class="active-cart-header glass-panel">
         <div class="cart-info">
@@ -114,21 +477,20 @@
           </div>
         </div>
 
+        <div class="user-badge-wrapper" id="auth-badge-cart"></div>
+
         <button id="btn-disconnect" class="btn btn-ghost btn-sm" title="Unpair cart">
           <i class="fa-solid fa-arrow-right-from-bracket"></i> Unpair
         </button>
       </header>
 
       <main class="dashboard-main">
-        
-        <!-- Live Itemized Cart Stream -->
         <section class="cart-feed-section">
           <div class="section-title-bar">
             <h2>Scanned Items <span id="cart-item-count-badge" class="item-count-pill">0 items</span></h2>
             <span class="rfid-pulse-indicator"><i class="fa-solid fa-radio"></i> RFID Listener Active</span>
           </div>
 
-          <!-- Empty Cart Placeholder -->
           <div id="empty-cart-state" class="empty-state glass-panel">
             <div class="empty-icon"><i class="fa-solid fa-basket-shopping"></i></div>
             <h3>Your Cart is Empty</h3>
@@ -138,15 +500,10 @@
             </div>
           </div>
 
-          <!-- Cart Items Container -->
-          <div id="cart-items-container" class="cart-items-list hidden">
-            <!-- Dynamic item cards appended here via JS -->
-          </div>
+          <div id="cart-items-container" class="cart-items-list hidden"></div>
         </section>
 
-        <!-- Sticky Price Summary & Checkout Action Panel -->
         <section class="cart-summary-section glass-panel">
-          <!-- Station Return Status Banner -->
           <div id="station-status-banner" class="station-banner in-aisle">
             <div class="banner-icon">
               <i id="station-icon" class="fa-solid fa-cart-flatbed-suitcases"></i>
@@ -158,7 +515,6 @@
             <div class="banner-badge" id="station-badge">Roaming</div>
           </div>
 
-          <!-- Financial Breakdown Table -->
           <div class="price-breakdown">
             <div class="price-row">
               <span>Subtotal (excl. VAT)</span>
@@ -174,69 +530,75 @@
             </div>
           </div>
 
-          <!-- Checkout Trigger Button -->
           <div class="checkout-action-wrapper" id="checkout-wrapper">
             <button id="btn-checkout" class="btn btn-primary btn-block btn-lg btn-locked" disabled>
               <i class="fa-solid fa-lock" id="checkout-btn-icon"></i>
               <span id="checkout-btn-text">Return Cart to Base Station to Pay</span>
             </button>
             <p id="checkout-tooltip" class="checkout-tooltip">
-              <i class="fa-solid fa-triangle-exclamation"></i> Cart must be docked at the checkout base station to unlock Stripe payment.
+              <i class="fa-solid fa-triangle-exclamation"></i> Cart must be docked at the checkout base station to unlock payment.
             </p>
           </div>
         </section>
       </main>
     </section>
 
+    <!-- PAYMENT METHOD MODAL -->
+    <div id="modal-payment-method" class="payment-method-modal">
+      <div class="payment-modal-card">
+        <h2>Complete Payment</h2>
+        <p class="payment-modal-sub">Choose how you'd like to pay</p>
 
-    <!-- VIEW 3: STRIPE PAYMENT MODAL / CHECKOUT VIEW -->
-    <div id="modal-payment" class="modal-overlay hidden">
-      <div class="modal-card payment-modal-card glass-panel">
-        <div class="modal-header">
-          <div class="payment-title">
-            <i class="fa-brands fa-stripe stripe-brand-icon"></i>
-            <h3>Secure Checkout</h3>
-          </div>
-          <button id="btn-close-payment" class="btn-icon" aria-label="Cancel checkout"><i class="fa-solid fa-xmark"></i></button>
+        <div class="payment-total-box">
+          <div class="payment-total-label">Total Due</div>
+          <div class="payment-total-value" id="modal-total-value">R 0.00</div>
         </div>
 
-        <div class="modal-body">
-          <div class="payable-summary-box">
-            <span class="box-label">Final Amount Due</span>
-            <span id="payment-total-display" class="payable-total">R 0.00</span>
-            <span class="currency-tag">ZAR • South African Rand</span>
-          </div>
+        <button class="pay-method-btn wallet" id="btn-pay-wallet">
+          <i class="fa-solid fa-wallet"></i> Pay with Wallet
+        </button>
+        <button class="pay-method-btn paystack" id="btn-pay-paystack">
+          <i class="fa-solid fa-credit-card"></i> Pay with Paystack
+        </button>
 
-          <form id="payment-form" class="stripe-form">
-            <div class="form-group">
-              <label for="card-element"><i class="fa-solid fa-credit-card"></i> Card Details</label>
-              <!-- Stripe Card Element Mount Point -->
-              <div id="card-element" class="stripe-input-container">
-                <!-- Fallback / Interactive Card Input rendered here if offline/stubbed -->
-              </div>
-              <div id="card-errors" class="card-errors-container" role="alert"></div>
-            </div>
-
-            <div class="security-note">
-              <i class="fa-solid fa-shield-halved"></i> Encrypted end-to-end via Stripe 256-bit TLS Gateway.
-            </div>
-
-            <button id="btn-pay-now" type="submit" class="btn btn-success btn-block btn-lg btn-glow">
-              <span id="pay-btn-spinner" class="spinner hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
-              <span id="pay-btn-text"><i class="fa-solid fa-lock"></i> Authorize & Pay <strong id="pay-btn-total-val">R 0.00</strong></span>
-            </button>
-          </form>
-        </div>
+        <button class="payment-cancel-btn" id="btn-cancel-payment">Cancel</button>
       </div>
     </div>
 
+    <!-- PIN ENTRY MODAL -->
+    <div id="modal-pin" class="pin-entry-modal">
+      <div class="pin-modal-card">
+        <h2>Enter Your PIN</h2>
+        <p class="pin-modal-sub">Confirm payment of <strong id="pin-amount-display">R 0.00</strong> from your wallet</p>
 
-    <!-- VIEW 4: POST-PAYMENT CONFIRMATION & RECEIPT -->
+        <div class="pin-display" id="pin-display"></div>
+        <div class="pin-error" id="pin-error"></div>
+
+        <div class="pin-numpad" id="pin-numpad">
+          <button class="pin-key" data-key="1">1</button>
+          <button class="pin-key" data-key="2">2</button>
+          <button class="pin-key" data-key="3">3</button>
+          <button class="pin-key" data-key="4">4</button>
+          <button class="pin-key" data-key="5">5</button>
+          <button class="pin-key" data-key="6">6</button>
+          <button class="pin-key" data-key="7">7</button>
+          <button class="pin-key" data-key="8">8</button>
+          <button class="pin-key" data-key="9">9</button>
+          <button class="pin-key clear" data-key="clear">⌫</button>
+          <button class="pin-key" data-key="0">0</button>
+          <button class="pin-key confirm" data-key="confirm" disabled>
+            <i class="fa-solid fa-check"></i>
+          </button>
+        </div>
+
+        <button class="payment-cancel-btn" id="btn-cancel-pin">Cancel</button>
+      </div>
+    </div>
+
+    <!-- RECEIPT MODAL -->
     <div id="modal-receipt" class="modal-overlay hidden">
       <div class="modal-card receipt-modal-card glass-panel">
         <div class="modal-body receipt-body">
-          
-          <!-- Animated Checkmark -->
           <div class="success-animation">
             <div class="checkmark-circle">
               <i class="fa-solid fa-check"></i>
@@ -252,15 +614,9 @@
               <div id="receipt-order-ref" class="receipt-ref">REF: #ORD-8942-ZAR</div>
               <div id="receipt-timestamp" class="receipt-date">2026-08-28 12:57</div>
             </div>
-
             <hr class="receipt-divider">
-
-            <div id="receipt-items-list" class="receipt-items">
-              <!-- Itemized line items populated by JS -->
-            </div>
-
+            <div id="receipt-items-list" class="receipt-items"></div>
             <hr class="receipt-divider">
-
             <div class="receipt-totals">
               <div class="receipt-row">
                 <span>Subtotal</span>
@@ -271,11 +627,10 @@
                 <span id="receipt-vat">R 0.00</span>
               </div>
               <div class="receipt-row total-row">
-                <span>Paid via Card</span>
+                <span id="receipt-method-label">Paid via Card</span>
                 <strong id="receipt-total">R 0.00</strong>
               </div>
             </div>
-
             <div class="receipt-footer">
               <i class="fa-solid fa-barcode"></i>
               <span>Gate Clearance Verification Authorized</span>
@@ -289,8 +644,7 @@
       </div>
     </div>
 
-
-    <!-- ESP32 SIMULATION / DEBUG DOCK PANEL -->
+    <!-- ESP32 SIMULATOR PANEL -->
     <aside id="debug-panel" class="debug-panel collapsed">
       <div class="debug-handle" id="debug-handle">
         <div class="handle-title">
@@ -305,8 +659,6 @@
 
       <div class="debug-content">
         <div class="debug-grid">
-          
-          <!-- Station Dock Toggle -->
           <div class="debug-box">
             <h4><i class="fa-solid fa-charging-station"></i> Base Station Proximity</h4>
             <button id="sim-btn-toggle-dock" class="btn btn-warning btn-block">
@@ -315,32 +667,15 @@
             <p class="debug-hint">Sends <code>station_docked: true</code> MQTT event to server</p>
           </div>
 
-          <!-- Quick RFID Add Actions -->
           <div class="debug-box">
             <h4><i class="fa-solid fa-wifi"></i> Scan RFID Tags (Add Items)</h4>
-            <div class="sim-items-buttons">
-              <button class="sim-add-btn" data-sku="MILK-001" data-name="Organic Fresh Milk 2L" data-price="32.50">
-                + Milk (R32.50)
-              </button>
-              <button class="sim-add-btn" data-sku="BREAD-002" data-name="Artisan Sourdough Bread" data-price="24.00">
-                + Bread (R24.00)
-              </button>
-              <button class="sim-add-btn" data-sku="APPLE-003" data-name="Crisp Red Apples 1kg" data-price="45.00">
-                + Apples (R45.00)
-              </button>
-              <button class="sim-add-btn" data-sku="STEAK-004" data-name="A-Grade Ribeye Steak 500g" data-price="185.00">
-                + Ribeye (R185.00)
-              </button>
-              <button class="sim-add-btn" data-sku="WATER-005" data-name="Still Mineral Water 6-Pack" data-price="55.00">
-                + Water (R55.00)
-              </button>
-              <button class="sim-add-btn" data-sku="COFFEE-006" data-name="Espresso Coffee Beans 500g" data-price="120.00">
-                + Coffee (R120.00)
-              </button>
+            <div class="sim-items-buttons" id="sim-items-buttons">
+              <div class="sim-loading">
+                <i class="fa-solid fa-circle-notch fa-spin"></i> Loading products...
+              </div>
             </div>
           </div>
 
-          <!-- Quick Presets -->
           <div class="debug-box">
             <h4><i class="fa-solid fa-sliders"></i> Test Presets & Actions</h4>
             <div class="sim-presets-group">
@@ -351,21 +686,18 @@
             </div>
           </div>
 
-          <!-- Raw MQTT JSON Event Logger -->
           <div class="debug-box debug-box-wide">
             <h4><i class="fa-solid fa-terminal"></i> ESP32 Raw Telemetry Stream</h4>
             <div id="debug-event-log" class="raw-log-console">
               <div class="log-line info">[System] ESP32 MQTT Websocket listener initialized on port 8883...</div>
             </div>
           </div>
-
         </div>
       </div>
     </aside>
 
   </div>
 
-  <!-- Main JavaScript Logic -->
   <script src="app.js"></script>
 </body>
 </html>

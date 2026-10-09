@@ -30,3 +30,13 @@ logs/
 # Operating System Files
 .DS_Store
 Thumbs.db
+# Local test files (curl, cookies)
+cookies.txt
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!vercel.json
+
+# VSCode settings (optional — remove if you want to share with team)
+.vscode/

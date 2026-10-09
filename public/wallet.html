@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartCart — My Wallet</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { max-width: 600px; margin: 0 auto; }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .header h1 { font-size: 1.6rem; font-weight: 700; }
+    .back-link {
+      color: #60a5fa; text-decoration: none; font-size: 0.9rem;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .card {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    }
+    .balance-label {
+      font-size: 0.85rem; color: #94a3b8;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+    .balance-value {
+      font-size: 2.4rem; font-weight: 700; color: #4ade80;
+      margin-bottom: 4px;
+    }
+    .balance-sub { font-size: 0.8rem; color: #64748b; }
+    .section-title {
+      font-size: 1rem; font-weight: 600;
+      margin-bottom: 16px; color: #cbd5e1;
+    }
+    .topup-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .topup-btn {
+      padding: 14px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      color: #f8fafc;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .topup-btn:hover { background: #1e293b; border-color: #3b82f6; }
+    .topup-btn.selected { background: #3b82f6; border-color: #3b82f6; }
+    .custom-amount {
+      display: flex; gap: 8px; margin-bottom: 12px;
+    }
+    .custom-amount input {
+      flex: 1;
+      padding: 12px 14px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      color: #f8fafc;
+      font-size: 1rem;
+      outline: none;
+    }
+    .custom-amount input:focus { border-color: #3b82f6; }
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-primary:disabled { background: #475569; cursor: not-allowed; }
+    .tx-list { max-height: 400px; overflow-y: auto; }
+    .tx-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #334155;
+    }
+    .tx-item:last-child { border-bottom: none; }
+    .tx-left { display: flex; align-items: center; gap: 12px; }
+    .tx-icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.9rem;
+    }
+    .tx-icon.credit { background: rgba(74,222,128,0.15); color: #4ade80; }
+    .tx-icon.debit { background: rgba(248,113,113,0.15); color: #f87171; }
+    .tx-icon.pending { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .tx-icon.failed { background: rgba(148,163,184,0.15); color: #94a3b8; }
+    .tx-info h4 { font-size: 0.9rem; font-weight: 600; margin-bottom: 2px; }
+    .tx-info span { font-size: 0.75rem; color: #64748b; }
+    .tx-amount { font-size: 0.95rem; font-weight: 700; }
+    .tx-amount.credit { color: #4ade80; }
+    .tx-amount.debit { color: #f87171; }
+    .tx-amount.pending { color: #f59e0b; }
+    .empty {
+      text-align: center;
+      padding: 30px 20px;
+      color: #64748b;
+      font-size: 0.9rem;
+    }
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #1e293b;
+      border-radius: 10px;
+      padding: 14px 20px;
+      font-size: 0.9rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      opacity: 0;
+      transition: all 0.3s;
+      pointer-events: none;
+      z-index: 1000;
+      display: flex; align-items: center; gap: 10px;
+      max-width: 90%;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+    .toast.success { border-left: 3px solid #4ade80; }
+    .toast.error { border-left: 3px solid #f87171; }
+    .toast.info { border-left: 3px solid #3b82f6; }
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.85);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .loading-overlay.show { display: flex; }
+    .loading-overlay i {
+      font-size: 2.5rem;
+      color: #3b82f6;
+    }
+    .loading-overlay p { font-size: 0.9rem; color: #cbd5e1; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>My Wallet</h1>
+      <a href="/app.html" class="back-link">
+        <i class="fa-solid fa-arrow-left"></i> Back to app
+      </a>
+    </div>
+
+    <!-- Balance Card -->
+    <div class="card">
+      <div class="balance-label">Available Balance</div>
+      <div class="balance-value" id="balance-display">R 0.00</div>
+      <div class="balance-sub" id="balance-status">Loading…</div>
+    </div>
+
+    <!-- Top Up Card -->
+    <div class="card">
+      <div class="section-title">
+        <i class="fa-solid fa-plus-circle"></i> Top Up Wallet
+      </div>
+      <div class="topup-grid">
+        <button class="topup-btn" data-amount="5000">R 50</button>
+        <button class="topup-btn" data-amount="10000">R 100</button>
+        <button class="topup-btn" data-amount="20000">R 200</button>
+      </div>
+      <div class="custom-amount">
+        <input type="number" id="custom-amount" placeholder="Custom amount (R)" min="10" max="5000" step="1" />
+      </div>
+      <button class="btn-primary" id="btn-topup">
+        <i class="fa-solid fa-wallet"></i> Add Funds via Paystack
+      </button>
+    </div>
+
+    <!-- Transactions -->
+    <div class="card">
+      <div class="section-title">
+        <i class="fa-solid fa-list"></i> Transaction History
+      </div>
+      <div class="tx-list" id="tx-list">
+        <div class="empty">Loading transactions…</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="loading-overlay" id="loading-overlay">
+    <i class="fa-solid fa-circle-notch fa-spin"></i>
+    <p id="loading-text">Verifying payment with Paystack…</p>
+  </div>
+
+  <script>
+    const API = window.location.origin;
+    let selectedAmount = 0;
+
+    const balanceDisplay = document.getElementById('balance-display');
+    const balanceStatus = document.getElementById('balance-status');
+    const txList = document.getElementById('tx-list');
+    const customAmountInput = document.getElementById('custom-amount');
+    const btnTopup = document.getElementById('btn-topup');
+    const toastEl = document.getElementById('toast');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
+
+    function showToast(msg, type = 'success') {
+      toastEl.innerHTML = `<i class="fa-solid fa-${type === 'success' ? 'circle-check' : type === 'error' ? 'circle-exclamation' : 'circle-info'}"></i> ${msg}`;
+      toastEl.className = `toast ${type} show`;
+      setTimeout(() => { toastEl.classList.remove('show'); }, 3500);
+    }
+
+    function showLoading(text) {
+      loadingText.textContent = text || 'Processing…';
+      loadingOverlay.classList.add('show');
+    }
+    function hideLoading() {
+      loadingOverlay.classList.remove('show');
+    }
+
+    async function loadBalance() {
+      try {
+        const res = await fetch(`${API}/api/wallet/balance`, { credentials: 'include' });
+        if (res.status === 401) {
+          window.location.href = '/login.html';
+          return;
+        }
+        const data = await res.json();
+        if (data.success) {
+          balanceDisplay.textContent = `R ${data.balanceRands}`;
+          balanceStatus.textContent = 'Balance up to date';
+        }
+      } catch (err) {
+        console.error('Balance load error:', err);
+        balanceStatus.textContent = 'Failed to load balance';
+      }
+    }
+
+    async function loadTransactions() {
+      try {
+        const res = await fetch(`${API}/api/wallet/transactions`, { credentials: 'include' });
+        if (res.status === 401) return;
+        const data = await res.json();
+        if (!data.success || !data.transactions || data.transactions.length === 0) {
+          txList.innerHTML = '<div class="empty"><i class="fa-solid fa-receipt"></i><br><br>No transactions yet</div>';
+          return;
+        }
+        txList.innerHTML = data.transactions.map(tx => {
+          const isCredit = tx.type === 'credit';
+          const status = tx.status || 'completed';
+          let statusClass = isCredit ? 'credit' : 'debit';
+          if (status === 'pending') statusClass = 'pending';
+          if (status === 'failed') statusClass = 'failed';
+
+          const date = new Date(tx.createdAt).toLocaleString();
+
+          let label = isCredit ? 'Top Up' : 'Payment';
+          if (status === 'pending') label = 'Top Up (Pending)';
+          if (status === 'failed') label = 'Top Up (Failed)';
+
+          return `
+            <div class="tx-item">
+              <div class="tx-left">
+                <div class="tx-icon ${statusClass}">
+                  <i class="fa-solid ${isCredit ? 'fa-arrow-down' : 'fa-arrow-up'}"></i>
+                </div>
+                <div class="tx-info">
+                  <h4>${label}</h4>
+                  <span>${date}${tx.reference ? ' · ' + tx.reference : ''}</span>
+                </div>
+              </div>
+              <div class="tx-amount ${statusClass}">
+                ${isCredit ? '+' : '-'} R ${tx.amountRands}
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        console.error('Transactions load error:', err);
+        txList.innerHTML = '<div class="empty">Failed to load transactions</div>';
+      }
+    }
+
+    // Preset top-up buttons
+    document.querySelectorAll('.topup-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.topup-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        selectedAmount = parseInt(btn.dataset.amount, 10);
+        customAmountInput.value = '';
+      });
+    });
+
+    customAmountInput.addEventListener('input', () => {
+      document.querySelectorAll('.topup-btn').forEach(b => b.classList.remove('selected'));
+      selectedAmount = 0;
+    });
+
+    // Top up → initialize Paystack → redirect to authorization URL
+    btnTopup.addEventListener('click', async () => {
+      let amountCents = selectedAmount;
+      if (!amountCents && customAmountInput.value) {
+        const rands = parseFloat(customAmountInput.value);
+        if (isNaN(rands) || rands < 10) {
+          showToast('Minimum top-up is R10.00', 'error');
+          return;
+        }
+        if (rands > 5000) {
+          showToast('Maximum top-up is R5000.00', 'error');
+          return;
+        }
+        amountCents = Math.round(rands * 100);
+      }
+
+      if (!amountCents || amountCents <= 0) {
+        showToast('Select or enter an amount', 'error');
+        return;
+      }
+
+      btnTopup.disabled = true;
+      btnTopup.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Redirecting to Paystack…';
+
+      try {
+        const res = await fetch(`${API}/api/wallet/topup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ amountCents }),
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data.authorizationUrl) {
+          showToast(data.error || 'Failed to start top-up', 'error');
+          btnTopup.disabled = false;
+          btnTopup.innerHTML = '<i class="fa-solid fa-wallet"></i> Add Funds via Paystack';
+          return;
+        }
+
+        // Redirect to Paystack's hosted checkout
+        window.location.href = data.authorizationUrl;
+      } catch (err) {
+        console.error('Topup error:', err);
+        showToast('Network error — try again', 'error');
+        btnTopup.disabled = false;
+        btnTopup.innerHTML = '<i class="fa-solid fa-wallet"></i> Add Funds via Paystack';
+      }
+    });
+
+    // Handle Paystack callback (?topup=success&reference=...)
+    async function handleCallback() {
+      const params = new URLSearchParams(window.location.search);
+      const topup = params.get('topup');
+      const reference = params.get('reference');
+
+      if (topup === 'success' && reference) {
+        showLoading('Verifying payment with Paystack…');
+        // Clean the URL immediately so refresh doesn't re-verify
+        window.history.replaceState({}, '', window.location.pathname);
+
+        try {
+          const res = await fetch(`${API}/api/wallet/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ reference }),
+          });
+          const data = await res.json();
+
+          hideLoading();
+
+          if (!res.ok) {
+            showToast(data.error || 'Verification failed', 'error');
+          } else {
+            showToast(`Wallet topped up! + R ${data.creditedRands}`, 'success');
+          }
+        } catch (err) {
+          hideLoading();
+          console.error('Verify error:', err);
+          showToast('Verification failed — try again', 'error');
+        }
+
+        // Reload balance + transactions regardless
+        loadBalance();
+        loadTransactions();
+      } else if (topup) {
+        // Paystack cancelled or failed
+        showToast('Top-up was cancelled', 'info');
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+
+    // Load everything
+    handleCallback();
+    loadBalance();
+    loadTransactions();
+  </script>
+</body>
+</html>

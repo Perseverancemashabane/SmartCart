@@ -273,24 +273,31 @@
           txList.innerHTML = '<div class="empty"><i class="fa-solid fa-receipt"></i><br><br>No transactions yet</div>';
           return;
         }
-        txList.innerHTML = data.transactions.map(tx => {
+                txList.innerHTML = data.transactions.map(tx => {
           const isCredit = tx.type === 'credit';
           const status = tx.status || 'completed';
+          const isCart = tx.source === 'cart';
+
           let statusClass = isCredit ? 'credit' : 'debit';
           if (status === 'pending') statusClass = 'pending';
           if (status === 'failed') statusClass = 'failed';
 
           const date = new Date(tx.createdAt).toLocaleString();
 
-          let label = isCredit ? 'Top Up' : 'Payment';
-          if (status === 'pending') label = 'Top Up (Pending)';
-          if (status === 'failed') label = 'Top Up (Failed)';
+          // Use the label from API, or fall back
+          let label = tx.label || (isCredit ? 'Top Up' : 'Payment');
+          if (status === 'pending') label = `${label} (Pending)`;
+          if (status === 'failed') label = `${label} (Failed)`;
+
+          // Icon: cart payments get a cart icon
+          const iconClass = isCart ? 'fa-cart-shopping'
+            : (isCredit ? 'fa-arrow-down' : 'fa-arrow-up');
 
           return `
             <div class="tx-item">
               <div class="tx-left">
                 <div class="tx-icon ${statusClass}">
-                  <i class="fa-solid ${isCredit ? 'fa-arrow-down' : 'fa-arrow-up'}"></i>
+                  <i class="fa-solid ${iconClass}"></i>
                 </div>
                 <div class="tx-info">
                   <h4>${label}</h4>

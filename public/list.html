@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartCart — My Shopping List</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { max-width: 640px; margin: 0 auto; }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .header h1 { font-size: 1.6rem; font-weight: 700; }
+    .back-link {
+      color: #60a5fa; text-decoration: none; font-size: 0.9rem;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .card {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    }
+    .progress-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .progress-title { font-size: 1rem; font-weight: 600; color: #cbd5e1; }
+    .progress-count { font-size: 1.4rem; font-weight: 700; color: #4ade80; }
+    .progress-bar {
+      height: 8px;
+      background: #0f172a;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #10b981, #4ade80);
+      transition: width 0.4s ease;
+    }
+    .progress-percent {
+      text-align: right;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+
+    .search-wrapper { position: relative; margin-bottom: 16px; }
+    .search-input-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 12px 14px;
+      transition: border 0.2s;
+    }
+    .search-input-wrap:focus-within { border-color: #3b82f6; }
+    .search-input-wrap i { color: #64748b; }
+    .search-input-wrap input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #f8fafc;
+      font-size: 1rem;
+      outline: none;
+      font-family: inherit;
+    }
+    .search-input-wrap input::placeholder { color: #64748b; }
+
+    .suggestions {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      margin-top: 6px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      max-height: 280px;
+      overflow-y: auto;
+      z-index: 50;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+      display: none;
+    }
+    .suggestions.show { display: block; }
+    .suggestion-item {
+      padding: 12px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid #334155;
+      transition: background 0.15s;
+    }
+    .suggestion-item:last-child { border-bottom: none; }
+    .suggestion-item:hover { background: #334155; }
+    .suggestion-item.custom { color: #fbbf24; font-style: italic; }
+    .suggestion-item .sugg-icon {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      background: rgba(59,130,246,0.15);
+      color: #3b82f6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .suggestion-item.custom .sugg-icon {
+      background: rgba(245,158,11,0.15);
+      color: #f59e0b;
+    }
+    .suggestion-item .sugg-text { flex: 1; }
+    .suggestion-item .sugg-text strong {
+      display: block;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #f8fafc;
+      margin-bottom: 2px;
+    }
+    .suggestion-item .sugg-text span {
+      font-size: 0.78rem;
+      color: #94a3b8;
+    }
+    .suggestion-item.custom .sugg-text strong { color: #fbbf24; }
+
+    .items-list { display: flex; flex-direction: column; gap: 8px; }
+    .list-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+    .list-item.pending {
+      opacity: 0.55;
+      border-style: dashed;
+      pointer-events: none;
+    }
+    .list-item.scanned {
+      opacity: 0.6;
+      border-color: #10b981;
+      background: rgba(16,185,129,0.05);
+    }
+    .item-check {
+      width: 24px; height: 24px;
+      border: 2px solid #334155;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s;
+    }
+    .item-check.checked {
+      background: #10b981;
+      border-color: #10b981;
+      color: white;
+    }
+    .item-details { flex: 1; min-width: 0; }
+    .item-details h4 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .list-item.scanned .item-details h4 {
+      text-decoration: line-through;
+      color: #94a3b8;
+    }
+    .item-details span { font-size: 0.75rem; color: #64748b; }
+    .item-qty {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .qty-btn {
+      width: 28px; height: 28px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #f8fafc;
+      font-size: 0.9rem;
+      cursor: pointer;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .qty-btn:hover { background: #334155; }
+    .qty-val {
+      min-width: 24px;
+      text-align: center;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .item-remove {
+      width: 32px; height: 32px;
+      background: transparent;
+      border: none;
+      color: #f87171;
+      cursor: pointer;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .item-remove:hover { color: #ef4444; }
+
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: #64748b;
+    }
+    .empty i {
+      font-size: 2.5rem;
+      margin-bottom: 12px;
+      color: #334155;
+    }
+    .empty p {
+      font-size: 0.9rem;
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+
+    .actions-bar { display: flex; gap: 10px; margin-top: 20px; }
+    .btn-secondary {
+      flex: 1;
+      padding: 12px;
+      background: rgba(248,113,113,0.1);
+      color: #f87171;
+      border: 1px solid rgba(248,113,113,0.3);
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .btn-secondary:hover { background: rgba(248,113,113,0.2); }
+    .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.9);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal-card {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 28px 24px;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }
+    .modal-card h3 { font-size: 1.2rem; margin-bottom: 8px; text-align: center; }
+    .modal-card p {
+      color: #94a3b8;
+      font-size: 0.9rem;
+      text-align: center;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+    .modal-actions { display: flex; gap: 10px; }
+    .modal-btn {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .modal-btn.cancel { background: #334155; color: #f8fafc; }
+    .modal-btn.cancel:hover { background: #475569; }
+    .modal-btn.danger { background: #ef4444; color: white; }
+    .modal-btn.danger:hover { background: #dc2626; }
+
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #1e293b;
+      border-radius: 10px;
+      padding: 14px 20px;
+      font-size: 0.9rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      opacity: 0;
+      transition: all 0.3s;
+      pointer-events: none;
+      z-index: 2000;
+      display: flex; align-items: center; gap: 10px;
+      max-width: 90%;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+    .toast.success { border-left: 3px solid #4ade80; }
+    .toast.error { border-left: 3px solid #f87171; }
+    .toast.info { border-left: 3px solid #3b82f6; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>My Shopping List</h1>
+      <a href="/app.html" class="back-link">
+        <i class="fa-solid fa-arrow-left"></i> Back to app
+      </a>
+    </div>
+
+    <div class="card" id="progress-card">
+      <div class="progress-header">
+        <span class="progress-title">Progress</span>
+        <span class="progress-count" id="progress-count">0 / 0</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+      </div>
+      <div class="progress-percent" id="progress-percent">0%</div>
+    </div>
+
+    <div class="card">
+      <div class="search-wrapper">
+        <div class="search-input-wrap">
+          <i class="fa-solid fa-search"></i>
+          <input
+            type="text"
+            id="search-input"
+            placeholder="Add item to your list..."
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+          />
+        </div>
+        <div class="suggestions" id="suggestions"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="items-list" id="items-list">
+        <div class="empty">
+          <i class="fa-solid fa-list-check"></i>
+          <p>Your list is empty.<br>Start typing above to add items.</p>
+        </div>
+      </div>
+
+      <div class="actions-bar">
+        <button class="btn-secondary" id="btn-clear-list" disabled>
+          <i class="fa-solid fa-trash-can"></i> Clear List
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="clear-modal">
+    <div class="modal-card">
+      <h3>Clear your entire list?</h3>
+      <p id="clear-modal-text">This will remove all items. This cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="modal-btn cancel" id="clear-cancel">Cancel</button>
+        <button class="modal-btn danger" id="clear-confirm">Clear All</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API = window.location.origin;
+    const PRODUCTS_CACHE_KEY = 'smartcart_products_cache';
+    const PRODUCTS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+    let products = [];
+    let list = null;
+    let searchDebounce = null;
+    let pendingItems = new Map(); // tempId -> { name, subtitle }
+
+    const $ = (id) => document.getElementById(id);
+
+    const searchInput = $('search-input');
+    const suggestions = $('suggestions');
+    const itemsList = $('items-list');
+    const progressCount = $('progress-count');
+    const progressFill = $('progress-fill');
+    const progressPercent = $('progress-percent');
+    const btnClearList = $('btn-clear-list');
+    const clearModal = $('clear-modal');
+    const clearCancel = $('clear-cancel');
+    const clearConfirm = $('clear-confirm');
+    const toast = $('toast');
+
+    function showToast(msg, type = 'success') {
+      toast.innerHTML = `<i class="fa-solid fa-${type === 'success' ? 'circle-check' : type === 'error' ? 'circle-exclamation' : 'circle-info'}"></i> ${msg}`;
+      toast.className = `toast ${type} show`;
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // ---- Products cache ----
+    async function loadProducts() {
+      // Try cache first
+      try {
+        const cached = localStorage.getItem(PRODUCTS_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed.timestamp && (Date.now() - parsed.timestamp) < PRODUCTS_CACHE_TTL) {
+            products = parsed.products;
+            console.log(`[Products] Loaded ${products.length} from cache`);
+            // Refresh in background without blocking
+            fetchProductsInBackground();
+            return;
+          }
+        }
+      } catch (e) { /* ignore cache errors */ }
+
+      // Fetch fresh
+      await fetchProductsInBackground();
+    }
+
+    async function fetchProductsInBackground() {
+      try {
+        const res = await fetch(`${API}/api/products/list`);
+        const data = await res.json();
+        if (data.success) {
+          products = data.products;
+          try {
+            localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify({
+              timestamp: Date.now(),
+              products: products
+            }));
+          } catch (e) { /* quota errors, ignore */ }
+          console.log(`[Products] Loaded ${products.length} from API`);
+        }
+      } catch (err) {
+        console.error('Failed to load products:', err);
+      }
+    }
+
+    // ---- List ----
+    async function loadList() {
+      try {
+        const res = await fetch(`${API}/api/shopping-list/active`, { credentials: 'include' });
+        if (res.status === 401) { window.location.href = '/login.html'; return; }
+        const data = await res.json();
+        list = data.list;
+        renderList();
+      } catch (err) {
+        console.error('Failed to load list:', err);
+        showToast('Failed to load list', 'error');
+      }
+    }
+
+    function renderList() {
+      // Build pending rows first
+      let pendingHtml = '';
+      for (const [tempId, info] of pendingItems.entries()) {
+        pendingHtml += `
+          <div class="list-item pending">
+            <div class="item-check"></div>
+            <div class="item-details">
+              <h4>${info.name}</h4>
+              <span>${info.subtitle} · <i class="fa-solid fa-circle-notch fa-spin"></i> Adding…</span>
+            </div>
+            <div class="item-qty"><span class="qty-val">1</span></div>
+          </div>
+        `;
+      }
+
+      if ((!list || !list.items || list.items.length === 0) && pendingItems.size === 0) {
+        itemsList.innerHTML = `
+          <div class="empty">
+            <i class="fa-solid fa-list-check"></i>
+            <p>Your list is empty.<br>Start typing above to add items.</p>
+          </div>
+        `;
+        btnClearList.disabled = true;
+        updateProgress(0, 0);
+        return;
+      }
+
+      const itemsHtml = (list?.items || []).map(item => `
+        <div class="list-item ${item.isScanned ? 'scanned' : ''}" data-item-id="${item.id}">
+          <div class="item-check ${item.isScanned ? 'checked' : ''}">
+            ${item.isScanned ? '<i class="fa-solid fa-check"></i>' : ''}
+          </div>
+          <div class="item-details">
+            <h4>${item.name}</h4>
+            <span>${item.productId ? 'Product · ' + (item.sku || '') : 'Custom item'}</span>
+          </div>
+          <div class="item-qty">
+            <button class="qty-btn" data-action="dec" data-item-id="${item.id}">−</button>
+            <span class="qty-val">${item.quantity}</span>
+            <button class="qty-btn" data-action="inc" data-item-id="${item.id}">+</button>
+          </div>
+          <button class="item-remove" data-item-id="${item.id}" title="Remove"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+      `).join('');
+
+      itemsList.innerHTML = pendingHtml + itemsHtml;
+
+      updateProgress(list?.total || 0, list?.found || 0);
+      btnClearList.disabled = !list?.items?.length;
+
+      itemsList.querySelectorAll('.qty-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.dataset.itemId;
+          if (btn.dataset.action === 'inc') addItemById(id);
+          else decreaseItem(id);
+        });
+      });
+
+      itemsList.querySelectorAll('.item-remove').forEach(btn => {
+        btn.addEventListener('click', () => removeItemById(btn.dataset.itemId));
+      });
+    }
+
+    function updateProgress(total, found) {
+      progressCount.textContent = `${found} / ${total}`;
+      const pct = total > 0 ? Math.round((found / total) * 100) : 0;
+      progressFill.style.width = pct + '%';
+      progressPercent.textContent = pct + '%';
+    }
+
+    // ---- Search ----
+    function showSuggestions(query) {
+      const q = query.trim().toLowerCase();
+      if (!q) { suggestions.classList.remove('show'); return; }
+
+      const matches = products.filter(p => p.name.toLowerCase().includes(q)).slice(0, 8);
+      const exactMatch = products.some(p => p.name.toLowerCase() === q);
+
+      let html = '';
+      if (matches.length > 0) {
+        html += matches.map(p => `
+          <div class="suggestion-item" data-product-id="${p.id}">
+            <div class="sugg-icon"><i class="fa-solid fa-box"></i></div>
+            <div class="sugg-text">
+              <strong>${p.name}</strong>
+              <span>Product · R ${p.priceRands}</span>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      if (!exactMatch && q.length >= 2) {
+        html += `
+          <div class="suggestion-item custom" data-custom-name="${query.trim().replace(/"/g, '&quot;')}">
+            <div class="sugg-icon"><i class="fa-solid fa-plus"></i></div>
+            <div class="sugg-text">
+              <strong>Add "${query.trim()}" as a custom item</strong>
+              <span>Not a product — reminder only</span>
+            </div>
+          </div>
+        `;
+      }
+
+      if (!html) { suggestions.classList.remove('show'); return; }
+
+      suggestions.innerHTML = html;
+      suggestions.classList.add('show');
+
+      suggestions.querySelectorAll('.suggestion-item').forEach(el => {
+        el.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          if (el.dataset.productId) {
+            addItemByProduct(parseInt(el.dataset.productId, 10));
+          } else if (el.dataset.customName) {
+            addCustomItem(el.dataset.customName);
+          }
+          searchInput.value = '';
+          suggestions.classList.remove('show');
+        });
+      });
+    }
+
+    // ---- Add item (optimistic, single request) ----
+    async function addItemByProduct(productId) {
+      const product = products.find(p => p.id === productId);
+      if (!product) return;
+
+      const tempId = 'pending_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+      pendingItems.set(tempId, { name: product.name, subtitle: 'Product' });
+      renderList();
+
+      try {
+        const res = await fetch(`${API}/api/shopping-list/add-item`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ productId })
+        });
+        const data = await res.json();
+        if (!data.success) showToast(data.error || 'Failed', 'error');
+      } catch (err) {
+        showToast('Network error', 'error');
+      } finally {
+        pendingItems.delete(tempId);
+        // Load fresh list — single request
+        await loadList();
+      }
+    }
+
+    async function addCustomItem(name) {
+      const tempId = 'pending_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+      pendingItems.set(tempId, { name, subtitle: 'Custom item' });
+      renderList();
+
+      try {
+        const res = await fetch(`${API}/api/shopping-list/add-item`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ customName: name })
+        });
+        const data = await res.json();
+        if (!data.success) showToast(data.error || 'Failed', 'error');
+      } catch (err) {
+        showToast('Network error', 'error');
+      } finally {
+        pendingItems.delete(tempId);
+        await loadList();
+      }
+    }
+
+    async function addItemById(itemId) {
+      const item = list.items.find(i => i.id == itemId);
+      if (!item) return;
+      if (item.productId) return addItemByProduct(item.productId);
+      return addCustomItem(item.customName);
+    }
+
+    async function decreaseItem(itemId) {
+      // Optimistic: decrement count in UI immediately
+      const el = itemsList.querySelector(`.list-item[data-item-id="${itemId}"] .qty-val`);
+      if (el) {
+        const curr = parseInt(el.textContent, 10);
+        if (curr > 1) el.textContent = curr - 1;
+      }
+      try {
+        const res = await fetch(`${API}/api/shopping-list/remove-item`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ itemId, decreaseOnly: true })
+        });
+        const data = await res.json();
+        if (data.success) await loadList();
+      } catch (err) {
+        showToast('Network error', 'error');
+      }
+    }
+
+    async function removeItemById(itemId) {
+      // Optimistic: hide the row immediately
+      const el = itemsList.querySelector(`.list-item[data-item-id="${itemId}"]`);
+      if (el) el.style.display = 'none';
+      try {
+        const res = await fetch(`${API}/api/shopping-list/remove-item`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ itemId })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Item removed', 'info');
+          await loadList();
+        }
+      } catch (err) {
+        showToast('Network error', 'error');
+        await loadList();
+      }
+    }
+
+    // ---- Search input ----
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => showSuggestions(searchInput.value), 150);
+    });
+
+    searchInput.addEventListener('focus', () => {
+      if (searchInput.value.trim()) showSuggestions(searchInput.value);
+    });
+
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const q = searchInput.value.trim();
+        if (q.length >= 2) {
+          const exact = products.find(p => p.name.toLowerCase() === q.toLowerCase());
+          if (exact) addItemByProduct(exact.id);
+          else addCustomItem(q);
+          searchInput.value = '';
+          suggestions.classList.remove('show');
+        }
+      }
+      if (e.key === 'Escape') suggestions.classList.remove('show');
+    });
+
+    // ---- Clear list ----
+    btnClearList.addEventListener('click', () => {
+      if (!list || !list.items || list.items.length === 0) return;
+      $('clear-modal-text').textContent = `This will remove all ${list.items.length} item(s) from your list. This cannot be undone.`;
+      clearModal.classList.add('show');
+    });
+
+    clearCancel.addEventListener('click', () => clearModal.classList.remove('show'));
+
+    clearConfirm.addEventListener('click', async () => {
+      clearModal.classList.remove('show');
+      if (!list || !list.items) return;
+
+      // Optimistic: empty the whole list UI
+      itemsList.innerHTML = '';
+      updateProgress(0, 0);
+
+      for (const item of list.items) {
+        try {
+          await fetch(`${API}/api/shopping-list/remove-item`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ itemId: item.id })
+          });
+        } catch (err) { /* ignore */ }
+      }
+      showToast('List cleared', 'info');
+      await loadList();
+    });
+
+    // ---- Init ----
+    (async () => {
+      // Load both in parallel — faster
+      await Promise.all([loadProducts(), loadList()]);
+    })();
+  </script>
+</body>
+</html>

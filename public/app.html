@@ -183,10 +183,6 @@
       color: #f8fafc;
     }
     .pay-method-btn.paystack:hover { background: #334155; }
-    .pay-method-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
     .payment-cancel-btn {
       width: 100%;
       padding: 12px;
@@ -377,6 +373,198 @@
       color: #64748b;
     }
     .sim-error { color: #f87171; }
+
+    /* Shopping List Progress Banner */
+    .shopping-list-banner {
+      background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(59,130,246,0.08));
+      border: 1px solid rgba(16,185,129,0.3);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 16px;
+      transition: all 0.2s;
+    }
+    .shopping-list-banner.hidden { display: none; }
+    .sl-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+    }
+    .sl-left { display: flex; align-items: center; gap: 12px; }
+    .sl-icon {
+      font-size: 1.3rem;
+      color: #10b981;
+      background: rgba(16,185,129,0.15);
+      padding: 10px;
+      border-radius: 10px;
+    }
+    .sl-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-bottom: 2px;
+    }
+    .sl-sub { font-size: 0.8rem; color: #94a3b8; }
+    .sl-right { display: flex; align-items: center; gap: 10px; }
+    .sl-percent {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #4ade80;
+    }
+    .sl-chevron {
+      color: #94a3b8;
+      font-size: 0.85rem;
+      transition: transform 0.25s;
+    }
+    .sl-chevron.open { transform: rotate(180deg); }
+    .sl-bar {
+      height: 6px;
+      background: rgba(15,23,42,0.6);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+    .sl-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #10b981, #4ade80);
+      transition: width 0.4s ease;
+    }
+    .sl-items {
+      margin-top: 14px;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 260px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .sl-items.open { display: flex; }
+    .sl-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: rgba(15,23,42,0.5);
+      border-radius: 8px;
+      font-size: 0.85rem;
+    }
+    .sl-item .sl-item-check {
+      width: 18px; height: 18px;
+      border: 2px solid #334155;
+      border-radius: 5px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+    }
+    .sl-item.done .sl-item-check {
+      background: #10b981;
+      border-color: #10b981;
+      color: white;
+    }
+    .sl-item.done .sl-item-name {
+      text-decoration: line-through;
+      color: #64748b;
+    }
+    .sl-item-name { flex: 1; color: #e2e8f0; }
+    .sl-item-qty {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      background: rgba(148,163,184,0.15);
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    /* Checkout warning modal */
+    .checkout-warning-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.9);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1200;
+      padding: 20px;
+    }
+    .checkout-warning-modal.show { display: flex; }
+    .checkout-warning-card {
+      background: #1e293b;
+      border-radius: 18px;
+      padding: 28px 24px;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }
+    .checkout-warning-icon {
+      width: 60px; height: 60px;
+      background: rgba(245,158,11,0.15);
+      color: #f59e0b;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.8rem;
+      margin: 0 auto 16px;
+    }
+    .checkout-warning-card h3 {
+      font-size: 1.2rem;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .checkout-warning-card p {
+      color: #94a3b8;
+      text-align: center;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+    .checkout-warning-list {
+      max-height: 140px;
+      overflow-y: auto;
+      background: rgba(15,23,42,0.5);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 20px;
+      font-size: 0.85rem;
+    }
+    .checkout-warning-list div {
+      color: #cbd5e1;
+      padding: 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .checkout-warning-list div::before {
+      content: '○';
+      color: #f59e0b;
+      font-weight: bold;
+    }
+    .checkout-warning-actions {
+      display: flex;
+      gap: 10px;
+    }
+    .checkout-warning-actions button {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .checkout-warning-actions .btn-back {
+      background: #334155;
+      color: #f8fafc;
+    }
+    .checkout-warning-actions .btn-back:hover { background: #475569; }
+    .checkout-warning-actions .btn-pay-anyway {
+      background: #f59e0b;
+      color: #0f172a;
+    }
+    .checkout-warning-actions .btn-pay-anyway:hover { background: #d97706; }
   </style>
 </head>
 <body>
@@ -428,7 +616,7 @@
               <i class="fa-solid fa-camera"></i> Scan Cart QR Code
             </button>
 
-            <!-- DEV/TESTING ONLY — remove before production demo -->
+            <!-- DEV/TESTING ONLY -->
             <div class="dev-pairing-panel">
               <div class="dev-pairing-label">
                 <i class="fa-solid fa-flask"></i> Developer Testing Mode
@@ -444,7 +632,6 @@
               </div>
               <p class="dev-pairing-note">Remove this panel before the production demo.</p>
             </div>
-            <!-- END DEV/TESTING ONLY -->
           </div>
         </div>
       </main>
@@ -485,6 +672,28 @@
       </header>
 
       <main class="dashboard-main">
+
+        <!-- Shopping List Progress Banner -->
+        <section id="shopping-list-progress" class="shopping-list-banner hidden">
+          <div class="sl-header" id="sl-toggle">
+            <div class="sl-left">
+              <i class="fa-solid fa-list-check sl-icon"></i>
+              <div>
+                <div class="sl-title">Shopping List</div>
+                <div class="sl-sub" id="sl-progress-text">Loading…</div>
+              </div>
+            </div>
+            <div class="sl-right">
+              <div class="sl-percent" id="sl-percent-text">0%</div>
+              <i class="fa-solid fa-chevron-down sl-chevron" id="sl-chevron"></i>
+            </div>
+          </div>
+          <div class="sl-bar">
+            <div class="sl-bar-fill" id="sl-bar-fill" style="width: 0%"></div>
+          </div>
+          <div class="sl-items" id="sl-items"></div>
+        </section>
+
         <section class="cart-feed-section">
           <div class="section-title-bar">
             <h2>Scanned Items <span id="cart-item-count-badge" class="item-count-pill">0 items</span></h2>
@@ -562,6 +771,22 @@
         </button>
 
         <button class="payment-cancel-btn" id="btn-cancel-payment">Cancel</button>
+      </div>
+    </div>
+
+    <!-- CHECKOUT WARNING MODAL -->
+    <div id="modal-checkout-warning" class="checkout-warning-modal">
+      <div class="checkout-warning-card">
+        <div class="checkout-warning-icon">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <h3>Items still on your list</h3>
+        <p>You have <strong id="cw-count">0</strong> item(s) still not collected:</p>
+        <div class="checkout-warning-list" id="cw-list"></div>
+        <div class="checkout-warning-actions">
+          <button class="btn-back" id="cw-cancel">Go Back</button>
+          <button class="btn-pay-anyway" id="cw-confirm">Pay Anyway</button>
+        </div>
       </div>
     </div>
 
@@ -679,8 +904,6 @@
           <div class="debug-box">
             <h4><i class="fa-solid fa-sliders"></i> Test Presets & Actions</h4>
             <div class="sim-presets-group">
-              <button id="sim-preset-quick" class="btn btn-secondary btn-sm">Preset 1: Quick Grocery</button>
-              <button id="sim-preset-trolley" class="btn btn-secondary btn-sm">Preset 2: Full Trolley</button>
               <button id="sim-remove-random" class="btn btn-danger btn-sm">- Remove Last Item</button>
               <button id="sim-clear-all" class="btn btn-ghost btn-sm"><i class="fa-solid fa-trash-can"></i> Clear Cart</button>
             </div>

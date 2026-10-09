@@ -1,6 +1,6 @@
 /**
  * SmartCart IoT - Full Application Logic
- * Dev panel pulls products from DB — no hardcoded products
+ * Cart lifecycle + auth + wallet payment + shopping list
  */
 
 // ==========================================================================
@@ -281,7 +281,7 @@ class UIController {
     this.bus.on('station:changed', (data) => this.renderStationBanner(data.isDocked));
 
     if (this.btnCheckout) {
-      this.btnCheckout.addEventListener('click', () => {
+      this.btnCheckout.addEventListener('click', async () => {
         if (!this.cartModule.isDockedAtStation) {
           this.showToast('Return cart to base station to unlock payment!', 'warning');
           return;
@@ -289,6 +289,19 @@ class UIController {
         if (this.cartModule.items.length === 0) {
           this.showToast('Your cart is empty! Add items before checkout.', 'warning');
           return;
+        }
+        // Check shopping list for unchecked items
+        try {
+          const res = await fetch(`${window.API_URL}/api/shopping-list/active`, {
+            credentials: 'include'
+          });
+          const data = await res.json();
+          if (data.success && data.list && data.list.remaining > 0) {
+            this.showCheckoutWarning(data.list);
+            return;
+          }
+        } catch (err) {
+          // if check fails, just proceed
         }
         this.bus.emit('checkout:open_modal');
       });
@@ -412,6 +425,34 @@ class UIController {
       }
     }
   }
+  showCheckoutWarning(list) {
+    const modal = document.getElementById('modal-checkout-warning');
+    const countEl = document.getElementById('cw-count');
+    const listEl = document.getElementById('cw-list');
+    const cancelBtn = document.getElementById('cw-cancel');
+    const confirmBtn = document.getElementById('cw-confirm');
+
+    if (!modal) return;
+
+    const unchecked = list.items.filter(i => !i.isScanned);
+    countEl.textContent = unchecked.length;
+    listEl.innerHTML = unchecked.map(i => `<div>${i.name} ×${i.quantity}</div>`).join('');
+
+    modal.classList.add('show');
+
+    const cleanup = () => modal.classList.remove('show');
+
+    const newCancel = cancelBtn.cloneNode(true);
+    const newConfirm = confirmBtn.cloneNode(true);
+    cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
+    confirmBtn.parentNode.replaceChild(newConfirm, confirmBtn);
+
+    newCancel.addEventListener('click', cleanup);
+    newConfirm.addEventListener('click', () => {
+      cleanup();
+      this.bus.emit('checkout:open_modal');
+    });
+  }
   showToast(message, type = 'info') {
     if (!this.toastContainer) return;
     const toast = document.createElement('div');
@@ -431,7 +472,77 @@ class UIController {
 
 
 // ==========================================================================
-// 5. CheckoutModule
+// 5. ShoppingListProgressModule — banner in cart view
+// ==========================================================================
+class ShoppingListProgressModule {
+  constructor(bus, cartModule) {
+    this.bus = bus;
+    this.cartModule = cartModule;
+    this.list = null;
+    this.expanded = false;
+    this.initDOM();
+    this.bindEvents();
+  }
+  initDOM() {
+    this.banner = document.getElementById('shopping-list-progress');
+    this.toggle = document.getElementById('sl-toggle');
+    this.progressText = document.getElementById('sl-progress-text');
+    this.percentText = document.getElementById('sl-percent-text');
+    this.barFill = document.getElementById('sl-bar-fill');
+    this.chevron = document.getElementById('sl-chevron');
+    this.itemsContainer = document.getElementById('sl-items');
+  }
+  bindEvents() {
+    if (this.toggle) {
+      this.toggle.addEventListener('click', () => {
+        this.expanded = !this.expanded;
+        this.itemsContainer.classList.toggle('open', this.expanded);
+        this.chevron.classList.toggle('open', this.expanded);
+      });
+    }
+    this.bus.on('cart:updated', () => {
+      if (this.cartModule.cartId) this.loadList();
+    });
+    this.bus.on('cart:paired', () => this.loadList());
+    this.bus.on('cart:unpaired', () => this.hideBanner());
+  }
+  hideBanner() {
+    if (this.banner) this.banner.classList.add('hidden');
+    this.list = null;
+  }
+  async loadList() {
+    try {
+      const res = await fetch(`${window.API_URL}/api/shopping-list/active`, {
+        credentials: 'include'
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.success || !data.list) { this.hideBanner(); return; }
+      this.list = data.list;
+      this.render();
+    } catch (err) { /* silent */ }
+  }
+  render() {
+    if (!this.list || !this.banner) return;
+    const { total, found, progressPercent, items } = this.list;
+    if (total === 0) { this.hideBanner(); return; }
+    this.banner.classList.remove('hidden');
+    this.progressText.textContent = `${found} of ${total} items collected`;
+    this.percentText.textContent = `${progressPercent}%`;
+    this.barFill.style.width = progressPercent + '%';
+    this.itemsContainer.innerHTML = items.map(item => `
+      <div class="sl-item ${item.isScanned ? 'done' : ''}">
+        <div class="sl-item-check">${item.isScanned ? '<i class="fa-solid fa-check"></i>' : ''}</div>
+        <span class="sl-item-name">${item.name}</span>
+        <span class="sl-item-qty">×${item.quantity}</span>
+      </div>
+    `).join('');
+  }
+}
+
+
+// ==========================================================================
+// 6. CheckoutModule
 // ==========================================================================
 class CheckoutModule {
   constructor(bus, cartModule, ui) {
@@ -472,7 +583,6 @@ class CheckoutModule {
     if (this.btnCancelPayment) this.btnCancelPayment.addEventListener('click', () => this.closeMethodModal());
     if (this.btnCancelPin) this.btnCancelPin.addEventListener('click', () => this.closePinModal());
     if (this.btnFinishReset) this.btnFinishReset.addEventListener('click', () => this.resetAndFinish());
-
     if (this.pinNumpad) {
       this.pinNumpad.querySelectorAll('.pin-key').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -489,9 +599,7 @@ class CheckoutModule {
     if (this.modalTotalValue) this.modalTotalValue.textContent = total;
     if (this.methodModal) this.methodModal.classList.add('show');
   }
-  closeMethodModal() {
-    if (this.methodModal) this.methodModal.classList.remove('show');
-  }
+  closeMethodModal() { if (this.methodModal) this.methodModal.classList.remove('show'); }
   openPinModal() {
     this.closeMethodModal();
     this.pinBuffer = '';
@@ -531,39 +639,37 @@ class CheckoutModule {
       this.pinDisplay.appendChild(div);
     }
     const confirmBtn = this.pinNumpad.querySelector('.pin-key.confirm');
-    if (confirmBtn) {
-      confirmBtn.disabled = this.pinBuffer.length < 4;
-    }
+    if (confirmBtn) confirmBtn.disabled = this.pinBuffer.length < 4;
   }
   async submitPin() {
     if (this.pinBuffer.length < 4) return;
     const pin = this.pinBuffer;
     this.pinError.textContent = '';
-
     const confirmBtn = this.pinNumpad.querySelector('.pin-key.confirm');
     if (confirmBtn) confirmBtn.disabled = true;
-
     try {
       const res = await fetch(`${window.API_URL}/api/wallet/pay`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          cart_id: this.cartModule.cartId,
-          pin: pin
-        })
+        body: JSON.stringify({ cart_id: this.cartModule.cartId, pin })
       });
       const data = await res.json();
-
       if (!res.ok) {
         this.pinError.textContent = data.error || 'Payment failed';
         this.pinBuffer = '';
         this.renderPinDisplay();
         return;
       }
-
       this.closePinModal();
       this.showReceipt('Wallet', data);
+      // Mark shopping list as complete
+      try {
+        await fetch(`${window.API_URL}/api/shopping-list/complete`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+      } catch (e) { /* silent */ }
     } catch (err) {
       console.error('[Wallet pay] error:', err);
       this.pinError.textContent = 'Network error. Please try again.';
@@ -596,11 +702,9 @@ class CheckoutModule {
     const summary = this.cartModule.getStateSummary();
     const orderNum = 'ORD-' + Math.floor(1000 + Math.random() * 9000) + '-ZAR';
     const now = new Date().toISOString().replace('T', ' ').substring(0, 16);
-
     if (this.receiptOrderRef) this.receiptOrderRef.textContent = `REF: #${orderNum}`;
     if (this.receiptTimestamp) this.receiptTimestamp.textContent = now;
     if (this.receiptMethodLabel) this.receiptMethodLabel.textContent = `Paid via ${method}`;
-
     if (this.receiptItemsList) {
       this.receiptItemsList.innerHTML = summary.items.map(item => `
         <div class="receipt-item-row">
@@ -612,7 +716,6 @@ class CheckoutModule {
     if (this.receiptSubtotal) this.receiptSubtotal.textContent = CartStateModule.formatCurrency(summary.subtotal);
     if (this.receiptVat) this.receiptVat.textContent = CartStateModule.formatCurrency(summary.vatAmount);
     if (this.receiptTotal) this.receiptTotal.textContent = CartStateModule.formatCurrency(summary.totalAmount);
-
     if (this.receiptModal) this.receiptModal.classList.remove('hidden');
     this.ui.showToast('Payment Successful!', 'success');
   }
@@ -635,7 +738,7 @@ class CheckoutModule {
 
 
 // ==========================================================================
-// 6. MockLiveFeedModule — Dev panel, products loaded from DB
+// 7. MockLiveFeedModule (Dev panel — products from DB)
 // ==========================================================================
 class MockLiveFeedModule {
   constructor(bus, cartModule) {
@@ -645,7 +748,7 @@ class MockLiveFeedModule {
     this.products = [];
     this.initDOM();
     this.bindEvents();
-    this.loadProducts(); // ← fetch products on init
+    this.loadProducts();
   }
   initDOM() {
     this.debugPanel = document.getElementById('debug-panel');
@@ -676,21 +779,16 @@ class MockLiveFeedModule {
     try {
       const res = await fetch(`${window.API_URL}/api/products/list`);
       const data = await res.json();
-
       if (!data.success || !data.products || data.products.length === 0) {
-        this.simItemsButtons.innerHTML = `
-          <div class="sim-empty">No products in database. Add products first.</div>
-        `;
+        this.simItemsButtons.innerHTML = `<div class="sim-empty">No products in database.</div>`;
         return;
       }
-
       this.products = data.products;
       this.simItemsButtons.innerHTML = data.products.map(p => `
         <button class="sim-add-btn" data-rfid="${p.rfidTag}" data-name="${p.name}">
           + ${p.name}<br><span style="color:#94a3b8;font-size:0.7rem;">R${p.priceRands}</span>
         </button>
       `).join('');
-
       this.simItemsButtons.querySelectorAll('.sim-add-btn').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           const rfid = e.currentTarget.getAttribute('data-rfid');
@@ -698,13 +796,9 @@ class MockLiveFeedModule {
           await this.scanItem(rfid, name);
         });
       });
-
-      console.log(`[Dev] Loaded ${data.products.length} products from DB`);
     } catch (err) {
       console.error('Failed to load products:', err);
-      this.simItemsButtons.innerHTML = `
-        <div class="sim-error">Failed to load products. Check console.</div>
-      `;
+      this.simItemsButtons.innerHTML = `<div class="sim-error">Failed to load products.</div>`;
     }
   }
   async scanItem(rfidTag, name) {
@@ -733,11 +827,7 @@ class MockLiveFeedModule {
         message: `${action === 'added' ? 'Added' : 'Removed'}: ${name}`,
         type: action === 'added' ? 'success' : 'info'
       });
-      this.logMQTTEvent('rfid_scan', {
-        action: action === 'added' ? 'ADD_ITEM' : 'REMOVE_ITEM',
-        rfid_tag: rfidTag,
-        name
-      });
+      this.logMQTTEvent('rfid_scan', { action, rfid_tag: rfidTag, name });
     } catch (err) {
       console.error('Scan error:', err);
       this.bus.emit('ui:toast', { message: 'Network error', type: 'error' });
@@ -745,7 +835,6 @@ class MockLiveFeedModule {
   }
   bindEvents() {
     if (this.debugHandle) this.debugHandle.addEventListener('click', () => this.togglePanel());
-
     const devBtn = document.getElementById('dev-panel-toggle');
     if (devBtn) devBtn.addEventListener('click', () => this.togglePanel());
 
@@ -758,10 +847,8 @@ class MockLiveFeedModule {
         }
         const isCurrentlyDocked = this.cartModule.isDockedAtStation;
         const endpoint = isCurrentlyDocked ? 'station-undock' : 'station-dock';
-
         this.simBtnToggleDock.disabled = true;
         this.simBtnToggleDock.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Working...';
-
         try {
           const res = await fetch(`${window.API_URL}/api/hardware/${endpoint}`, {
             method: 'POST',
@@ -775,7 +862,7 @@ class MockLiveFeedModule {
           });
           const data = await res.json();
           if (!res.ok || !data.success) {
-            this.bus.emit('ui:toast', { message: data.error || 'Dock operation failed', type: 'error' });
+            this.bus.emit('ui:toast', { message: data.error || 'Dock failed', type: 'error' });
           } else {
             const newDocked = Boolean(data.session?.isDocked);
             this.cartModule.setDockedState(newDocked);
@@ -797,7 +884,6 @@ class MockLiveFeedModule {
         }
       });
     }
-
     const rmBtn = document.getElementById('sim-remove-random');
     if (rmBtn) rmBtn.addEventListener('click', () => this.cartModule.removeLastItem());
     const clrBtn = document.getElementById('sim-clear-all');
@@ -829,7 +915,7 @@ class MockLiveFeedModule {
 
 
 // ==========================================================================
-// 7. Auth Module
+// 8. Auth Module
 // ==========================================================================
 class AuthModule {
   constructor(bus) {
@@ -838,9 +924,7 @@ class AuthModule {
     this.loginGate = document.getElementById('login-gate');
     this.init();
   }
-  async init() {
-    await this.loadAuth();
-  }
+  async init() { await this.loadAuth(); }
   async loadAuth() {
     const badge1 = document.getElementById('auth-badge-pairing');
     const badge2 = document.getElementById('auth-badge-cart');
@@ -869,7 +953,6 @@ class AuthModule {
     const c = this.customer;
     const displayName = c.name || c.phoneNumber;
     const wallet = c.walletBalanceRands || (c.walletBalanceCents / 100).toFixed(2);
-
     container.innerHTML = `
       <a href="/wallet.html" class="user-badge" style="text-decoration: none;">
         <i class="fa-solid fa-user-circle"></i>
@@ -907,7 +990,7 @@ class AuthModule {
 
 
 // ==========================================================================
-// 8. App Initialization
+// 9. App Initialization
 // ==========================================================================
 document.addEventListener('DOMContentLoaded', () => {
   const isLocalhost = window.location.hostname === 'localhost';
@@ -918,6 +1001,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const qrScanner = new QRScannerModule(appBus);
   const uiController = new UIController(appBus, cartModule);
+  const shoppingListProgress = new ShoppingListProgressModule(appBus, cartModule);
   const checkoutModule = new CheckoutModule(appBus, cartModule, uiController);
   const mockFeed = new MockLiveFeedModule(appBus, cartModule);
   const authModule = new AuthModule(appBus);
@@ -969,7 +1053,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     appBus.emit('cart:updated', cartModule.getStateSummary());
   }
-
   async function pollCart() {
     if (cartModule.cartId) {
       try {
@@ -991,19 +1074,62 @@ document.addEventListener('DOMContentLoaded', () => {
   appBus.on('cart:unpaired', () => { lastServerSignature = ''; });
   pollCart();
 
-  const urlParams = new URLSearchParams(window.location.search);
+    const urlParams = new URLSearchParams(window.location.search);
   const paid = urlParams.get('paid');
   const paidCartId = urlParams.get('cart_id');
-  if (paid === 'true' && paidCartId) {
-    fetch(`${window.API_URL}/api/cart/reset`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ cart_id: paidCartId })
-    }).then(() => {
-      window.history.replaceState({}, '', window.location.pathname);
-      appBus.emit('ui:toast', { message: 'Payment successful! Cart reset.', type: 'success' });
-    }).catch(err => console.error('[Paystack] Reset failed:', err));
+  const paidReference = urlParams.get('reference');
+
+  if (paid === 'true' && paidCartId && paidReference) {
+    (async () => {
+      try {
+        // 1. Verify with Paystack and mark Transaction as completed
+        const verifyRes = await fetch(`${window.API_URL}/api/checkout/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ reference: paidReference })
+        });
+        const verifyData = await verifyRes.json();
+
+        if (!verifyRes.ok) {
+          console.error('[Paystack verify] Failed:', verifyData.error);
+          appBus.emit('ui:toast', {
+            message: verifyData.error || 'Payment verification failed',
+            type: 'error'
+          });
+          return;
+        }
+
+        // 2. Archive shopping list (if any) for this customer
+        try {
+          await fetch(`${window.API_URL}/api/shopping-list/complete`, {
+            method: 'POST',
+            credentials: 'include'
+          });
+        } catch (e) { /* silent */ }
+
+        // 3. Reset the cart session
+        await fetch(`${window.API_URL}/api/cart/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ cart_id: paidCartId })
+        });
+
+        // 4. Clean URL and show success
+        window.history.replaceState({}, '', window.location.pathname);
+        appBus.emit('ui:toast', {
+          message: `Payment successful! R ${verifyData.amountRands} received.`,
+          type: 'success'
+        });
+      } catch (err) {
+        console.error('[Paystack] Verify flow failed:', err);
+        appBus.emit('ui:toast', {
+          message: 'Payment verification failed',
+          type: 'error'
+        });
+      }
+    })();
   }
 
   console.log('SmartCart ready. API:', window.API_URL);

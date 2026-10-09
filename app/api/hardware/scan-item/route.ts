@@ -106,6 +106,98 @@ export async function POST(request: Request) {
       }
     }
 
+    // ============================================================
+    // ⭐ SHOPPING LIST AUTO-MARK
+    // If this customer has an active shopping list that contains
+    // this product, mark it as found (when added).
+    // If the item is being removed, unmark it as found.
+    // ============================================================
+    let shoppingListUpdate: any = null;
+
+    if (session.customerId) {
+      try {
+        const activeList = await prisma.shoppingList.findFirst({
+          where: {
+            customerId: session.customerId,
+            isActive: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (activeList) {
+          const listItem = await prisma.shoppingListItem.findFirst({
+            where: {
+              listId: activeList.id,
+              productId: product.id,
+            },
+          });
+
+          if (listItem) {
+            if (actionTaken === 'added' || actionTaken === 'incremented') {
+              // Mark as found
+              if (!listItem.isScanned) {
+                const updated = await prisma.shoppingListItem.update({
+                  where: { id: listItem.id },
+                  data: {
+                    isScanned: true,
+                    scannedAt: new Date(),
+                  },
+                });
+                shoppingListUpdate = {
+                  itemId: updated.id,
+                  isScanned: true,
+                  action: 'marked_found',
+                };
+                console.log(`[ShoppingList] Marked item ${updated.id} (${product.name}) as found`);
+              }
+            } else if (
+              (actionTaken === 'removed' || actionTaken === 'decremented') &&
+              listItem.isScanned
+            ) {
+              // Unmark if the cart item was removed completely
+              // (only unmark on full removal — decrement means still in cart)
+              if (actionTaken === 'removed') {
+                const updated = await prisma.shoppingListItem.update({
+                  where: { id: listItem.id },
+                  data: {
+                    isScanned: false,
+                    scannedAt: null,
+                  },
+                });
+                shoppingListUpdate = {
+                  itemId: updated.id,
+                  isScanned: false,
+                  action: 'unmarked',
+                };
+                console.log(`[ShoppingList] Unmarked item ${updated.id} (${product.name})`);
+              }
+            }
+          }
+
+          // Compute fresh progress for this list
+          const allListItems = await prisma.shoppingListItem.findMany({
+            where: { listId: activeList.id },
+          });
+          const total = allListItems.length;
+          const found = allListItems.filter(i => i.isScanned).length;
+
+          shoppingListUpdate = {
+            ...(shoppingListUpdate || {}),
+            listId: activeList.id,
+            progress: {
+              total,
+              found,
+              remaining: total - found,
+              progressPercent: total > 0 ? Math.round((found / total) * 100) : 0,
+            },
+          };
+        }
+      } catch (listErr) {
+        // Never let shopping list failure break the scan
+        console.warn('[ShoppingList] auto-mark failed (non-fatal):', listErr);
+      }
+    }
+
     // Recalculate totals
     const allItems = await prisma.cartItem.findMany({
       where: { sessionId: session.id },
@@ -139,6 +231,7 @@ export async function POST(request: Request) {
         subtotalCents: i.subtotalCents,
       })),
       lastAction: { action: actionTaken, product: product.name, sku: rfid_tag },
+      shoppingList: shoppingListUpdate,
     };
 
     cartEventsBus.emit(`stream:${cart_id}`, streamPayload);

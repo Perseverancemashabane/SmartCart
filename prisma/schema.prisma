@@ -130,21 +130,25 @@ model ShoppingList {
   name        String?            @db.VarChar(100)
   createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamp(6)
   completedAt DateTime?          @map("completed_at") @db.Timestamp(6)
+  isActive    Boolean            @default(true) @map("is_active")
   customer    Customer           @relation(fields: [customerId], references: [id])
   items       ShoppingListItem[]
 
+  @@index([customerId, isActive])
   @@map("shopping_lists")
 }
 
 model ShoppingListItem {
-  id        Int          @id @default(autoincrement())
-  listId    Int          @map("list_id")
-  productId Int          @map("product_id")
-  quantity  Int          @default(1)
-  isScanned Boolean      @default(false) @map("is_scanned")
-  scannedAt DateTime?    @map("scanned_at") @db.Timestamp(6)
-  list      ShoppingList @relation(fields: [listId], references: [id])
-  product   Product      @relation(fields: [productId], references: [id])
+  id         Int          @id @default(autoincrement())
+  listId     Int          @map("list_id")
+  productId  Int?         @map("product_id")
+  customName String?      @map("custom_name") @db.VarChar(100)
+  quantity   Int          @default(1)
+  isScanned  Boolean      @default(false) @map("is_scanned")
+  scannedAt  DateTime?    @map("scanned_at") @db.Timestamp(6)
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamp(6)
+  list       ShoppingList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  product    Product?     @relation(fields: [productId], references: [id])
 
   @@map("shopping_list_items")
 }

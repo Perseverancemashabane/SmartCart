@@ -947,7 +947,7 @@ class AuthModule {
   }
   showLoginGate() { if (this.loginGate) this.loginGate.classList.add('show'); }
   hideLoginGate() { if (this.loginGate) this.loginGate.classList.remove('show'); }
-  renderAuthBadge(container) {
+    renderAuthBadge(container) {
     if (!container) return;
     if (!this.customer) { container.innerHTML = ''; return; }
     const c = this.customer;
@@ -958,6 +958,10 @@ class AuthModule {
         <i class="fa-solid fa-user-circle"></i>
         <span>${displayName}</span>
         <span class="wallet-pill"><i class="fa-solid fa-wallet"></i> R ${wallet}</span>
+      </a>
+      <a href="/list.html" class="btn-list-link" title="My Shopping List">
+        <i class="fa-solid fa-list-check"></i>
+        <span class="list-link-text">My List</span>
       </a>
       <button class="btn-logout" id="btn-logout-${container.id}">
         <i class="fa-solid fa-right-from-bracket"></i> Logout

@@ -18,9 +18,10 @@
     .user-badge-wrapper {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       margin-left: auto;
       margin-right: 12px;
+      flex-wrap: wrap;
     }
     .user-badge {
       display: flex;
@@ -46,6 +47,23 @@
       border-radius: 10px;
       font-size: 0.78rem;
     }
+    .btn-list-link {
+      padding: 6px 12px;
+      background: rgba(59,130,246,0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59,130,246,0.3);
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: inherit;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .btn-list-link:hover { background: rgba(59,130,246,0.3); }
     .btn-logout {
       padding: 6px 12px;
       background: rgba(248,113,113,0.15);
@@ -76,6 +94,11 @@
       gap: 6px;
     }
     .btn-login-link:hover { background: #2563eb; }
+
+    @media (max-width: 700px) {
+      .list-link-text { display: none; }
+      .user-badge span:not(.wallet-pill) { display: none; }
+    }
 
     /* Dev panel */
     .dev-pairing-panel {
@@ -658,7 +681,7 @@
             <i class="fa-solid fa-cart-shopping"></i>
             <span id="paired-cart-id-display">Cart #04</span>
           </div>
-          <div id="connection-status-badge" class="connection-status online">
+          <div id="connection-status-badge" class="connection-online">
             <span class="status-dot"></span>
             <span class="connection-text">Live RFID Active</span>
           </div>

@@ -108,15 +108,17 @@ export async function POST(request: Request) {
     });
 
     const response = NextResponse.json({
-      success: true,
-      customer: {
-        id: customer.id,
-        phoneNumber: customer.phoneNumber,
-        email: customer.email,
-        name: customer.name,
-        walletBalanceCents: customer.walletBalanceCents,
-      },
-    });
+  success: true,
+  token,
+  cookieName: SESSION_COOKIE_NAME,
+  customer: {
+    id: customer.id,
+    phoneNumber: customer.phoneNumber,
+    email: customer.email,
+    name: customer.name,
+    walletBalanceCents: customer.walletBalanceCents,
+  },
+});
 
     response.cookies.set(SESSION_COOKIE_NAME, token, sessionCookieOptions());
     return response;

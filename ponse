@@ -1,0 +1,31 @@
+[1mdiff --git a/app/api/auth/login/route.ts b/app/api/auth/login/route.ts[m
+[1mindex dd94d3f..20df1f8 100644[m
+[1m--- a/app/api/auth/login/route.ts[m
+[1m+++ b/app/api/auth/login/route.ts[m
+[36m@@ -108,15 +108,17 @@[m [mexport async function POST(request: Request) {[m
+     });[m
+ [m
+     const response = NextResponse.json({[m
+[31m-      success: true,[m
+[31m-      customer: {[m
+[31m-        id: customer.id,[m
+[31m-        phoneNumber: customer.phoneNumber,[m
+[31m-        email: customer.email,[m
+[31m-        name: customer.name,[m
+[31m-        walletBalanceCents: customer.walletBalanceCents,[m
+[31m-      },[m
+[31m-    });[m
+[32m+[m[32m  success: true,[m
+[32m+[m[32m  token,[m
+[32m+[m[32m  cookieName: SESSION_COOKIE_NAME,[m
+[32m+[m[32m  customer: {[m
+[32m+[m[32m    id: customer.id,[m
+[32m+[m[32m    phoneNumber: customer.phoneNumber,[m
+[32m+[m[32m    email: customer.email,[m
+[32m+[m[32m    name: customer.name,[m
+[32m+[m[32m    walletBalanceCents: customer.walletBalanceCents,[m
+[32m+[m[32m  },[m
+[32m+[m[32m});[m
+ [m
+     response.cookies.set(SESSION_COOKIE_NAME, token, sessionCookieOptions());[m
+     return response;[m

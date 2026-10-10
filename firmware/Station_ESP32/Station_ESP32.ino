@@ -33,7 +33,7 @@ const char* password = "vddh30npbm211912";
 const char* API_ENDPOINT = "https://smart-cart-5qod.vercel.app/api/hardware/station-dock";
 const char* STATION_ID = "STATION_BASE_01";
 const char* PHYSICAL_TAG = "27E5F505";   // The physical tag on the cart handle
-const char* CART_ID = "CART_004";        // The cart's database ID
+const char* CART_ID = "cart_004";        // The cart's database ID (lowercase!)
 
 // ============================
 // PIN CONFIGURATIONS
@@ -124,6 +124,7 @@ void sendDockEvent() {
   HTTPClient http;
   http.begin(client, API_ENDPOINT);
   http.addHeader("Content-Type", "application/json");
+  http.setTimeout(8000);
 
   StaticJsonDocument<200> doc;
   doc["station_id"] = STATION_ID;

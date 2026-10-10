@@ -194,7 +194,8 @@ class QRScannerModule {
     if (cartId.includes('cart_id=')) {
       cartId = cartId.split('cart_id=')[1].split('&')[0];
     }
-    this.triggerPairing(cartId || 'CART_001');
+    // FIX: default to lowercase cart_004 to match backend
+    this.triggerPairing(cartId || 'cart_004');
   }
   handleManualPairing() {
     const val = this.inputCartId ? this.inputCartId.value.trim() : '';
@@ -202,7 +203,8 @@ class QRScannerModule {
       appBus.emit('ui:toast', { message: 'Please enter a valid Cart ID', type: 'warning' });
       return;
     }
-    this.triggerPairing(val.toUpperCase());
+    // FIX: don't force uppercase — backend uses exact cart IDs like "cart_004"
+    this.triggerPairing(val);
   }
   triggerPairing(cartId) {
     this.bus.emit('qr:scanned', { cartId });
@@ -243,7 +245,11 @@ class UIController {
   }
   bindEvents() {
     this.bus.on('cart:paired', (data) => {
-      if (this.pairedCartIdDisplay) this.pairedCartIdDisplay.textContent = `Cart #${data.cartId.replace('CART_', '')}`;
+      // FIX: case-insensitive cart_ prefix strip
+      if (this.pairedCartIdDisplay) {
+        const shortId = data.cartId.replace(/^cart_/i, '');
+        this.pairedCartIdDisplay.textContent = `Cart #${shortId}`;
+      }
       this.switchView('view-cart');
       this.showToast(`Successfully paired with ${data.cartId}`, 'success');
       this.renderStationBanner(this.cartModule.isDockedAtStation);
@@ -947,7 +953,7 @@ class AuthModule {
   }
   showLoginGate() { if (this.loginGate) this.loginGate.classList.add('show'); }
   hideLoginGate() { if (this.loginGate) this.loginGate.classList.remove('show'); }
-    renderAuthBadge(container) {
+  renderAuthBadge(container) {
     if (!container) return;
     if (!this.customer) { container.innerHTML = ''; return; }
     const c = this.customer;
@@ -1009,6 +1015,31 @@ document.addEventListener('DOMContentLoaded', () => {
   const checkoutModule = new CheckoutModule(appBus, cartModule, uiController);
   const mockFeed = new MockLiveFeedModule(appBus, cartModule);
   const authModule = new AuthModule(appBus);
+
+  // Auto-pair if URL has ?cart_id=...
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlCartId = urlParams.get('cart_id');
+  if (urlCartId) {
+    const cartInput = document.getElementById('input-cart-id');
+    if (cartInput) cartInput.value = urlCartId;
+    // Wait for auth to load before pairing
+    setTimeout(() => {
+      if (authModule.customer) {
+        console.log('[AutoPair] Pairing from URL:', urlCartId);
+        appBus.emit('qr:scanned', { cartId: urlCartId });
+      } else {
+        console.warn('[AutoPair] Not logged in yet, waiting for user to log in');
+        // Watch for login completion
+        const checkLogin = setInterval(() => {
+          if (authModule.customer) {
+            clearInterval(checkLogin);
+            console.log('[AutoPair] User logged in, pairing now:', urlCartId);
+            appBus.emit('qr:scanned', { cartId: urlCartId });
+          }
+        }, 1000);
+      }
+    }, 800);
+  }
 
   appBus.on('qr:scanned', async (data) => {
     console.log('[Pair] Attempting to pair:', data.cartId);
@@ -1078,7 +1109,6 @@ document.addEventListener('DOMContentLoaded', () => {
   appBus.on('cart:unpaired', () => { lastServerSignature = ''; });
   pollCart();
 
-    const urlParams = new URLSearchParams(window.location.search);
   const paid = urlParams.get('paid');
   const paidCartId = urlParams.get('cart_id');
   const paidReference = urlParams.get('reference');

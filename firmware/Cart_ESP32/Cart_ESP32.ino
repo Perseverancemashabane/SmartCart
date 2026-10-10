@@ -32,7 +32,7 @@ const char* PAIR_BASE_URL = "https://smart-cart-5qod.vercel.app/app.html?cart_id
 // PIN CONFIGURATIONS
 // ============================
 #define RC522_SS   5
-#define RC522_RST  22
+#define RC522_RST  4
 
 #define TFT_CS   -1
 #define TFT_RST  15

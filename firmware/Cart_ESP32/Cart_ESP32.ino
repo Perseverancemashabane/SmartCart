@@ -1,116 +1,405 @@
 /*
- * SmartCart IoT - Full Cart Firmware (V4.2)
- * -----------------------------------------
- * QR code using ESP32 built-in QR library (esp_qrcode.h)
+ * ============================================================
+ *  SmartCart — ESP32 Cart Firmware  (v4 — with QR via ESP-IDF)
+ * ============================================================
+ *  Cart ID: cart_004
+ *  Backend: https://smart-cart-5qod.vercel.app
+ * ============================================================
  */
 
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
 #include <SPI.h>
 #include <MFRC522.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
-#include <ArduinoJson.h>
+#include <Keypad.h>
 #include <qrcode.h>
 
-// ============================
-// WI-FI CREDENTIALS
-// ============================
-const char* ssid = "TECNO SPARK Go 2";
-const char* password = "vddh30npbm211912";
+// ============================================================
+//  CONFIGURATION
+// ============================================================
+const char* WIFI_SSID     = "TECNO SPARK Go 2";
+const char* WIFI_PASSWORD = "vddh30npbm211912";
 
-// ============================
-// API ENDPOINTS
-// ============================
-const char* SCAN_ENDPOINT = "https://smart-cart-5qod.vercel.app/api/hardware/scan-item";
-const char* SYNC_ENDPOINT = "https://smart-cart-5qod.vercel.app/api/cart/sync";
-const char* CART_ID = "CART_004";
+const char* BACKEND_URL   = "https://smart-cart-5qod.vercel.app";
+const char* CART_ID       = "cart_004";
+const char* COOKIE_NAME   = "smartcart_session";
 const char* PAIR_BASE_URL = "https://smart-cart-5qod.vercel.app/app.html?cart_id=";
 
-// ============================
-// PIN CONFIGURATIONS
-// ============================
+// Extra colors
+#define ST77XX_NAVY   0x000F
+#define ST77XX_DARK   0x0841
+#define ST77XX_ACCENT 0x05BF
+#define ST77XX_MUTED  0x8410
+
+// ============================================================
+//  PIN DEFINITIONS
+// ============================================================
+#define TFT_CS    -1
+#define TFT_RST   15
+#define TFT_DC    12
+#define TFT_SCK   14
+#define TFT_MOSI  13
+
 #define RC522_SS   5
 #define RC522_RST  4
+#define RC522_SCK  18
+#define RC522_MISO 19
+#define RC522_MOSI 23
 
-#define TFT_CS   -1
-#define TFT_RST  15
-#define TFT_DC   12
+#define BUZZER_PIN 25
+#define RED_LED    26
 
-#define BUZZER_PIN   25
-#define RED_LED      26
-#define GREEN_LED    27
+const byte ROWS = 4;
+const byte COLS = 3;
+char keys[ROWS][COLS] = {
+  {'2','1','3'},
+  {'0','*','#'},
+  {'8','7','9'},
+  {'5','4','6'}
+};
+byte rowPins[ROWS] = {32, 33, 21, 22};
+byte colPins[COLS] = {16, 17, 27};
 
-// ============================
-// OBJECTS
-// ============================
+// ============================================================
+//  OBJECTS
+// ============================================================
 SPIClass SPI_TFT(HSPI);
 Adafruit_ST7789 tft = Adafruit_ST7789(&SPI_TFT, TFT_CS, TFT_DC, TFT_RST);
-MFRC522 mfrc522(RC522_SS, RC522_RST);
+MFRC522 rfid(RC522_SS, RC522_RST);
+Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
-// ============================
-// STATE
-// ============================
-String lastScannedTag = "";
-unsigned long lastScanTime = 0;
-const unsigned long DEBOUNCE_DELAY_MS = 2000;
-float cartTotal = 0.0;
-int itemCount = 0;
-bool cartActive = false;
-unsigned long lastSyncTime = 0;
-const unsigned long SYNC_INTERVAL_MS = 5000;
-bool showingQRCode = false;
+// ============================================================
+//  STATE MACHINE
+// ============================================================
+enum CartState {
+  ST_IDLE,
+  ST_PHONE_ENTRY,
+  ST_LOOKING_UP,
+  ST_NOT_REGISTERED,
+  ST_WELCOME,
+  ST_MODE_MENU,
+  ST_WEBSITE_QR,
+  ST_MANUAL_PIN,
+  ST_SCAN_MODE,
+  ST_CONFIRM_CANCEL,
+  ST_CART_CLEARED,
+  ST_DOCKED_PAYMENT,
+  ST_MANUAL_PAY_PIN,
+  ST_PAYMENT_DONE
+};
 
-// ============================
-// BUZZER EFFECTS
-// ============================
-void beepShort() { digitalWrite(BUZZER_PIN, HIGH); delay(100); digitalWrite(BUZZER_PIN, LOW); }
-void beepDouble() {
-  digitalWrite(BUZZER_PIN, HIGH); delay(80); digitalWrite(BUZZER_PIN, LOW);
-  delay(60);
-  digitalWrite(BUZZER_PIN, HIGH); delay(80); digitalWrite(BUZZER_PIN, LOW);
+CartState currentState = ST_IDLE;
+String typed = "";
+String phoneNumber = "";
+String customerName = "";
+String customerId = "";
+String authToken = "";
+String lastUID = "";
+String errorMessage = "";
+unsigned long lastUIDAt = 0;
+unsigned long errorShownAt = 0;
+unsigned long stateEnteredAt = 0;
+unsigned long lastPollAt = 0;
+
+long subtotalCents = 0;
+long taxCents = 0;
+long totalCents = 0;
+bool cartIsDocked = false;
+String sessionItems = "";
+
+// ============================================================
+//  FORWARD DECLARATIONS
+// ============================================================
+void tftTextRight(const char* text, int16_t xRight, int16_t y,
+                  uint16_t color = ST77XX_WHITE, uint8_t size = 2);
+
+// ============================================================
+//  BEEP
+// ============================================================
+void beep(int ms = 70) { tone(BUZZER_PIN, 2200, ms); }
+void beepError() { tone(BUZZER_PIN, 500, 300); }
+void beepSuccess() {
+  tone(BUZZER_PIN, 2500, 60);
+  delay(70);
+  tone(BUZZER_PIN, 3200, 70);
 }
-void beepTriple() {
-  for (int i = 0; i < 3; i++) {
-    digitalWrite(BUZZER_PIN, HIGH); delay(70); digitalWrite(BUZZER_PIN, LOW); delay(50);
+
+// ============================================================
+//  TFT HELPERS
+// ============================================================
+void tftClear() { tft.fillScreen(ST77XX_BLACK); }
+
+void tftHeader(const char* title, const char* subtitle = nullptr) {
+  tft.fillRect(0, 0, 240, 44, ST77XX_NAVY);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setTextSize(2);
+  tft.setCursor(12, 10);
+  tft.print(title);
+  if (subtitle && strlen(subtitle) > 0) {
+    tft.setTextColor(ST77XX_ACCENT);
+    tft.setTextSize(1);
+    tft.setCursor(12, 32);
+    tft.print(subtitle);
   }
 }
-void beepError() { digitalWrite(BUZZER_PIN, HIGH); delay(500); digitalWrite(BUZZER_PIN, LOW); }
-void beepConnected() {
-  digitalWrite(BUZZER_PIN, HIGH); delay(80); digitalWrite(BUZZER_PIN, LOW); delay(60);
-  digitalWrite(BUZZER_PIN, HIGH); delay(120); digitalWrite(BUZZER_PIN, LOW); delay(60);
-  digitalWrite(BUZZER_PIN, HIGH); delay(180); digitalWrite(BUZZER_PIN, LOW);
-}
-void beepRemoved() {
-  digitalWrite(BUZZER_PIN, HIGH); delay(180); digitalWrite(BUZZER_PIN, LOW); delay(60);
-  digitalWrite(BUZZER_PIN, HIGH); delay(80); digitalWrite(BUZZER_PIN, LOW);
+
+void tftCenter(int y, const char* text, uint16_t color = ST77XX_WHITE, uint8_t size = 2) {
+  int16_t x1, y1;
+  uint16_t w, h;
+  tft.setTextSize(size);
+  tft.setTextColor(color);
+  tft.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+  tft.setCursor((240 - w) / 2, y);
+  tft.print(text);
 }
 
-// ============================
-// LED HELPERS
-// ============================
-void flashGreen(int times) {
-  for (int i = 0; i < times; i++) { digitalWrite(GREEN_LED, HIGH); delay(100); digitalWrite(GREEN_LED, LOW); delay(100); }
+void tftLine(int y, const char* text, uint16_t color = ST77XX_WHITE, uint8_t size = 2) {
+  tft.setTextColor(color);
+  tft.setTextSize(size);
+  tft.setCursor(12, y);
+  tft.print(text);
 }
-void flashRed(int times) {
-  for (int i = 0; i < times; i++) { digitalWrite(RED_LED, HIGH); delay(100); digitalWrite(RED_LED, LOW); delay(100); }
-}
-void setGreen() { digitalWrite(GREEN_LED, HIGH); digitalWrite(RED_LED, LOW); }
-void setRed() { digitalWrite(GREEN_LED, LOW); digitalWrite(RED_LED, HIGH); }
 
-// ============================
-// QR CODE DISPLAY CALLBACK
-// ============================
+void tftTextRight(const char* text, int16_t xRight, int16_t y,
+                  uint16_t color, uint8_t size) {
+  int16_t x1, y1;
+  uint16_t w, h;
+  tft.setTextSize(size);
+  tft.setTextColor(color);
+  tft.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+  tft.setCursor(xRight - w, y);
+  tft.print(text);
+}
+
+void tftHint(const char* hint) {
+  tft.fillRect(0, 218, 240, 22, ST77XX_DARK);
+  tft.setTextColor(ST77XX_MUTED);
+  tft.setTextSize(1);
+  tft.setCursor(8, 225);
+  tft.print(hint);
+}
+
+void tftError(const char* msg) {
+  tft.fillRect(0, 178, 240, 34, ST77XX_RED);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setTextSize(1);
+  tft.setCursor(8, 186);
+  tft.print(msg);
+}
+
+// ============================================================
+//  FORMAT CENTS
+// ============================================================
+String rands(long cents) {
+  char buf[24];
+  snprintf(buf, sizeof(buf), "R%ld.%02ld", cents / 100, cents % 100);
+  return String(buf);
+}
+
+// ============================================================
+//  HTTP HELPERS
+// ============================================================
+String httpPost(const String& path, const String& jsonBody, bool useCookie = false) {
+  if (WiFi.status() != WL_CONNECTED) return "";
+
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient http;
+  http.begin(client, String(BACKEND_URL) + path);
+  http.addHeader("Content-Type", "application/json");
+
+  if (useCookie && authToken.length() > 0) {
+    String ck = String(COOKIE_NAME) + "=" + authToken;
+    http.addHeader("Cookie", ck);
+  }
+
+  http.setTimeout(3000);
+  int code = http.POST(jsonBody);
+  String response = http.getString();
+  http.end();
+
+  Serial.printf("[HTTP] POST %s -> %d\n", path.c_str(), code);
+  Serial.println(response);
+  return response;
+}
+
+// ============================================================
+//  LOOKUP CUSTOMER
+// ============================================================
+bool lookupCustomer(const String& phone, String& outName, String& outId) {
+  String body = "{\"phone_number\":\"" + phone + "\"}";
+  String resp = httpPost("/api/customers/lookup", body);
+  if (resp.length() == 0) return false;
+
+  StaticJsonDocument<1024> doc;
+  if (deserializeJson(doc, resp)) return false;
+
+  bool found = doc["found"] | false;
+  if (!found) return false;
+
+  outName = doc["customer"]["name"].as<String>();
+  outId   = doc["customer"]["id"].as<String>();
+  return true;
+}
+
+// ============================================================
+//  LOGIN
+// ============================================================
+bool login(const String& phone, const String& pin) {
+  String body = "{\"phone_number\":\"" + phone + "\",\"pin\":\"" + pin + "\"}";
+  String resp = httpPost("/api/auth/login", body);
+  if (resp.length() == 0) return false;
+
+  StaticJsonDocument<2048> doc;
+  if (deserializeJson(doc, resp)) return false;
+
+  if (doc.containsKey("error")) {
+    errorMessage = doc["error"].as<String>();
+    return false;
+  }
+
+  const char* tok = doc["token"] | "";
+  if (strlen(tok) == 0) {
+    errorMessage = "Auth token missing";
+    return false;
+  }
+  authToken = String(tok);
+  return true;
+}
+
+// ============================================================
+//  PAIR CART
+// ============================================================
+bool pairCart() {
+  String body = "{\"cart_id\":\"" + String(CART_ID) + "\"}";
+  String resp = httpPost("/api/cart/pair", body, true);
+  if (resp.length() == 0) return false;
+
+  StaticJsonDocument<2048> doc;
+  if (deserializeJson(doc, resp)) return false;
+  return doc["success"] | false;
+}
+
+// ============================================================
+//  SYNC
+// ============================================================
+bool syncCart() {
+  String body = "{\"cart_id\":\"" + String(CART_ID) + "\"}";
+  String resp = httpPost("/api/cart/sync", body);
+  if (resp.length() == 0) return false;
+
+  StaticJsonDocument<4096> doc;
+  if (deserializeJson(doc, resp)) return false;
+
+  JsonObject session = doc["session"];
+  if (session.isNull()) return false;
+
+  cartIsDocked  = session["isDocked"] | false;
+  subtotalCents = session["subtotalCents"] | 0;
+  taxCents      = session["taxCents"] | 0;
+  totalCents    = session["totalCents"] | 0;
+
+  sessionItems = "";
+  JsonArray items = session["items"];
+  for (JsonObject it : items) {
+    const char* nm = it["name"];
+    int qty = it["quantity"] | 1;
+    sessionItems += String(qty) + "x " + String(nm) + "\n";
+  }
+  return true;
+}
+
+// ============================================================
+//  SCAN ITEM
+// ============================================================
+bool scanItem(const String& uid) {
+  String body = "{\"cart_id\":\"" + String(CART_ID) +
+                "\",\"rfid_tag\":\"" + uid +
+                "\",\"action\":\"toggle\"}";
+  String resp = httpPost("/api/hardware/scan-item", body);
+  if (resp.length() == 0) {
+    errorMessage = "Network error";
+    return false;
+  }
+
+  StaticJsonDocument<4096> doc;
+  if (deserializeJson(doc, resp)) {
+    errorMessage = "Bad response";
+    return false;
+  }
+
+  if (doc.containsKey("error")) {
+    errorMessage = doc["error"].as<String>();
+    return false;
+  }
+
+  JsonObject session = doc["session"];
+  if (session.isNull()) {
+    errorMessage = "No session";
+    return false;
+  }
+
+  cartIsDocked  = session["isDocked"] | false;
+  subtotalCents = session["subtotalCents"] | 0;
+  taxCents      = session["taxCents"] | 0;
+  totalCents    = session["totalCents"] | 0;
+
+  sessionItems = "";
+  JsonArray items = session["items"];
+  for (JsonObject it : items) {
+    const char* nm = it["name"];
+    int qty = it["quantity"] | 1;
+    sessionItems += String(qty) + "x " + String(nm) + "\n";
+  }
+  return true;
+}
+
+// ============================================================
+//  RESET CART (cancel shopping)
+// ============================================================
+bool resetCart() {
+  String body = "{\"cart_id\":\"" + String(CART_ID) + "\"}";
+  String resp = httpPost("/api/cart/reset", body);
+  if (resp.length() == 0) return false;
+
+  StaticJsonDocument<1024> doc;
+  if (deserializeJson(doc, resp)) return false;
+  return doc["success"] | false;
+}
+
+// ============================================================
+//  WALLET PAY
+// ============================================================
+String walletPay(const String& pin) {
+  String body = "{\"cart_id\":\"" + String(CART_ID) +
+                "\",\"pin\":\"" + pin + "\"}";
+  return httpPost("/api/wallet/pay", body, true);
+}
+
+// ============================================================
+//  QR CODE — using ESP-IDF built-in library (esp_qrcode)
+// ============================================================
 void qr_display_callback(esp_qrcode_handle_t qrcode) {
   int size = esp_qrcode_get_size(qrcode);
-  int moduleSize = 6;
-  int qrSize = size * moduleSize;
-  int xOffset = (240 - qrSize) / 2;
-  int yOffset = 15;
-  
-  tft.fillScreen(ST77XX_WHITE);
-  
+
+  // Fit QR to 200x200 region on the 240x240 screen
+  int maxPixels = 200;
+  int moduleSize = maxPixels / size;
+  if (moduleSize < 2) moduleSize = 2;
+
+  int qrPixels = size * moduleSize;
+  int xOffset = (240 - qrPixels) / 2;
+  int yOffset = 52;   // below header
+
+  // White background for contrast
+  tft.fillRect(xOffset - 4, yOffset - 4, qrPixels + 8, qrPixels + 8, ST77XX_WHITE);
+
+  // Draw dark modules
   for (int y = 0; y < size; y++) {
     for (int x = 0; x < size; x++) {
       if (esp_qrcode_get_module(qrcode, x, y)) {
@@ -123,275 +412,567 @@ void qr_display_callback(esp_qrcode_handle_t qrcode) {
   }
 }
 
-void tftShowQRCode() {
-  showingQRCode = true;
-  String fullUrl = String(PAIR_BASE_URL) + String(CART_ID);
-
+void drawQRCodeOnTFT(const char* url) {
   esp_qrcode_config_t cfg = ESP_QRCODE_CONFIG_DEFAULT();
   cfg.display_func = qr_display_callback;
   cfg.max_qrcode_version = 10;
   cfg.qrcode_ecc_level = ESP_QRCODE_ECC_LOW;
 
-  esp_qrcode_generate(&cfg, fullUrl.c_str());
-
-  // Footer text
-  tft.fillRect(0, 215, 240, 25, ST77XX_BLUE);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.setTextSize(1);
-  tft.setCursor(15, 222);
-  tft.println("Scan QR to pair this cart");
+  esp_qrcode_generate(&cfg, url);
 }
 
-// ============================
-// TFT DISPLAY
-// ============================
-void tftBootScreen() {
-  tft.fillScreen(ST77XX_BLACK);
+// ============================================================
+//  SCREENS
+// ============================================================
+void showIdle() {
+  tftClear();
+  tftHeader("SmartCart", "Ready to shop");
+  tftCenter(80, "Welcome", ST77XX_ACCENT, 3);
+  tftCenter(120, "Press any key", ST77XX_WHITE, 2);
+  tftCenter(150, "to begin", ST77XX_WHITE, 2);
+  tftHint("SmartCart IoT - cart_004");
+}
+
+void showPhoneEntry() {
+  tftClear();
+  tftHeader("Enter Phone", "10 digits");
+  tftLine(60, "Phone number:", ST77XX_MUTED, 1);
   tft.setTextColor(ST77XX_WHITE);
   tft.setTextSize(3);
-  tft.setCursor(20, 60);
-  tft.println("SmartCart");
-  tft.setTextSize(1);
-  tft.setTextColor(ST77XX_GREEN);
-  tft.setCursor(20, 110);
-  tft.println("System Boot");
+  tft.setCursor(12, 85);
+  tft.print(typed.length() ? typed.c_str() : "_");
+  tftHint("* clear     # continue");
 }
 
-void tftShowStatus(String status, String subtext, uint16_t color) {
-  showingQRCode = false;
-  tft.fillScreen(ST77XX_BLACK);
-  tft.setTextColor(color);
-  tft.setTextSize(2);
-  tft.setCursor(10, 40);
-  tft.println(status);
+void showNotRegistered() {
+  tftClear();
+  tftHeader("Not Found", "");
+  tftCenter(80, "Number not", ST77XX_RED, 2);
+  tftCenter(110, "registered", ST77XX_RED, 2);
+  tftCenter(160, "Please register", ST77XX_MUTED, 1);
+  tftCenter(180, "at the kiosk", ST77XX_MUTED, 1);
+}
+
+void showWelcome() {
+  tftClear();
+  tftHeader("Welcome", "");
+  tftCenter(70, "Hi,", ST77XX_ACCENT, 2);
+  String name = customerName;
+  if (name.length() > 16) name = name.substring(0, 15) + ".";
+  tftCenter(105, name.c_str(), ST77XX_WHITE, 2);
+  tftHint("Press # to continue");
+}
+
+void showModeMenu() {
+  tftClear();
+  tftHeader("Choose Mode", "How are you shopping?");
+  tftLine(70, "1", ST77XX_ACCENT, 3);
+  tftLine(80, "  Website", ST77XX_WHITE, 2);
+  tftLine(120, "2", ST77XX_ACCENT, 3);
+  tftLine(130, "  Manual", ST77XX_WHITE, 2);
+  tftHint("Press 1 or 2");
+}
+
+void showQR() {
+  tftClear();
+  tftHeader("Pair Cart", "Scan with your phone");
+
+  String fullUrl = String(PAIR_BASE_URL) + String(CART_ID);
+  Serial.print("QR URL: ");
+  Serial.println(fullUrl);
+
+  drawQRCodeOnTFT(fullUrl.c_str());
+
+  // Footer
+  tft.fillRect(0, 218, 240, 22, ST77XX_DARK);
+  tft.setTextColor(ST77XX_ACCENT);
   tft.setTextSize(1);
+  tft.setCursor(8, 225);
+  tft.print("Waiting for phone to pair...");
+}
+
+void showPinEntry(const char* title) {
+  tftClear();
+  tftHeader(title, "4 to 6 digits");
+  tftLine(60, "PIN:", ST77XX_MUTED, 1);
   tft.setTextColor(ST77XX_WHITE);
-  tft.setCursor(10, 90);
-  tft.println(subtext);
+  tft.setTextSize(3);
+  tft.setCursor(12, 85);
+  String masked = "";
+  for (unsigned int i = 0; i < typed.length(); i++) masked += "*";
+  tft.print(masked.length() ? masked.c_str() : "_");
+  tftHint("* clear     # continue");
 }
 
-void tftShowReady() {
-  showingQRCode = false;
-  tft.fillScreen(ST77XX_BLACK);
-  tft.setTextColor(ST77XX_GREEN);
-  tft.setTextSize(2);
-  tft.setCursor(10, 20);
-  tft.println("Ready");
+void showScanMode() {
+  tftClear();
+  tftHeader("Scanning", "Tap items on the reader");
+
+  if (sessionItems.length() == 0) {
+    tft.setTextColor(ST77XX_MUTED);
+    tft.setTextSize(2);
+    tft.setCursor(12, 80);
+    tft.print("(empty)");
+  } else {
+    tft.setTextColor(ST77XX_WHITE);
+    tft.setTextSize(1);
+    tft.setCursor(12, 56);
+    tft.print(sessionItems);
+  }
+
+  tft.fillRect(0, 180, 240, 40, ST77XX_NAVY);
+  tft.setTextColor(ST77XX_ACCENT);
   tft.setTextSize(1);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.setCursor(10, 60);
-  tft.println("Scan a tag");
-  tft.setTextColor(ST77XX_CYAN);
-  tft.setCursor(10, 120);
-  tft.print("Items: "); tft.println(itemCount);
-  tft.setCursor(10, 140);
-  tft.print("Total: R"); tft.println(cartTotal, 2);
+  tft.setCursor(12, 186);
+  tft.print("TOTAL");
+  tftTextRight(rands(totalCents).c_str(), 228, 192, ST77XX_WHITE, 3);
+
+  tftHint("Scan item  |  # = cancel");
 }
 
-void tftShowScanned(String itemName, float price, String action) {
-  showingQRCode = false;
-  tft.fillScreen(ST77XX_BLACK);
-  uint16_t titleColor = (action == "removed") ? ST77XX_RED : ST77XX_CYAN;
-  String titleText = (action == "removed") ? "Removed" : "Added";
-  tft.setTextColor(titleColor); tft.setTextSize(2);
-  tft.setCursor(10, 20); tft.println(titleText);
-  tft.setTextColor(ST77XX_WHITE); tft.setTextSize(2);
-  tft.setCursor(10, 60); tft.println(itemName);
-  tft.setTextSize(3); tft.setTextColor(ST77XX_YELLOW);
-  tft.setCursor(10, 100); tft.print("R"); tft.println(price, 2);
-  tft.setTextSize(1); tft.setTextColor(ST77XX_GREEN);
-  tft.setCursor(10, 160);
-  tft.print("Items: "); tft.print(itemCount);
-  tft.print("  Total: R"); tft.println(cartTotal, 2);
+void showConfirmCancel() {
+  tftClear();
+  tftHeader("Cancel shopping?", "");
+  tftCenter(80, "Clear cart and", ST77XX_WHITE, 2);
+  tftCenter(110, "return to idle?", ST77XX_WHITE, 2);
+  tftLine(180, "# = yes, cancel", ST77XX_RED, 1);
+  tftLine(196, "* = no, go back", ST77XX_GREEN, 1);
 }
 
-void tftShowError(String error) {
-  showingQRCode = false;
-  tft.fillScreen(ST77XX_BLACK);
-  tft.setTextColor(ST77XX_RED); tft.setTextSize(2);
-  tft.setCursor(10, 50); tft.println("Error");
-  tft.setTextSize(1); tft.setTextColor(ST77XX_WHITE);
-  tft.setCursor(10, 90); tft.println(error);
+void showCartCleared() {
+  tftClear();
+  tftHeader("Cleared", "");
+  tftCenter(100, "Cart cleared", ST77XX_GREEN, 3);
+  tftCenter(160, "Returning to idle", ST77XX_MUTED, 1);
 }
 
-// ============================
-// BOOT ANIMATION
-// ============================
-void bootAnimation() {
-  for (int i = 0; i < 2; i++) {
-    digitalWrite(GREEN_LED, HIGH); digitalWrite(RED_LED, HIGH); delay(150);
-    digitalWrite(GREEN_LED, LOW); digitalWrite(RED_LED, LOW); delay(150);
-  }
-  flashGreen(3); flashRed(3);
-  beepTriple();
+void showDocked() {
+  tftClear();
+  tftHeader("Payment", "Cart docked");
+  tftCenter(80, "Payment", ST77XX_GREEN, 3);
+  tftCenter(120, "Unlocked", ST77XX_GREEN, 3);
+  tftCenter(180, rands(totalCents).c_str(), ST77XX_ACCENT, 2);
+  tftHint("Proceed to pay");
 }
 
-// ============================
-// WiFi
-// ============================
-void connectToWiFi() {
-  if (WiFi.status() == WL_CONNECTED) return;
-  tftShowStatus("Wi-Fi", "Connecting...", ST77XX_YELLOW);
-  digitalWrite(RED_LED, LOW);
-  WiFi.begin(ssid, password);
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 40) {
-    delay(500);
-    digitalWrite(GREEN_LED, !digitalRead(GREEN_LED));
-    attempts++;
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("WiFi Connected!");
-    setGreen(); beepConnected();
-  } else {
-    Serial.println("WiFi Failed.");
-    tftShowError("WiFi failed"); setRed(); beepError();
-  }
+void showPaymentDone(bool ok, const String& message) {
+  tftClear();
+  tftHeader(ok ? "Success" : "Failed", "");
+  tftCenter(90, ok ? "SUCCESS" : "FAILED",
+            ok ? ST77XX_GREEN : ST77XX_RED, 3);
+  tftCenter(140, message.c_str(), ST77XX_WHITE, 1);
+  tftCenter(180, "Thank you!", ST77XX_ACCENT, 2);
 }
 
-// ============================
-// CART SYNC
-// ============================
-void syncCartState() {
-  if (WiFi.status() != WL_CONNECTED) return;
-  WiFiClientSecure client; client.setInsecure();
-  HTTPClient http;
-  http.begin(client, SYNC_ENDPOINT);
-  http.addHeader("Content-Type", "application/json");
-  StaticJsonDocument<100> reqDoc;
-  reqDoc["cart_id"] = CART_ID;
-  String reqBody; serializeJson(reqDoc, reqBody);
-  int httpResponseCode = http.POST(reqBody);
-  if (httpResponseCode == 200) {
-    String response = http.getString();
-    StaticJsonDocument<2048> respDoc;
-    DeserializationError error = deserializeJson(respDoc, response);
-    if (!error && respDoc["success"]) {
-      if (respDoc["session"].isNull()) {
-        if (cartActive) {
-          Serial.println("[Sync] Cart reset");
-          cartActive = false; cartTotal = 0.0; itemCount = 0;
-        }
-        if (!showingQRCode) tftShowQRCode();
-      } else {
-        if (!cartActive) {
-          Serial.println("[Sync] Cart active");
-          cartActive = true; tftShowReady();
-        }
-        int totalCents = respDoc["session"]["totalCents"] | 0;
-        cartTotal = totalCents / 100.0;
-        JsonArray items = respDoc["session"]["items"];
-        int totalQty = 0;
-        for (JsonVariant item : items) totalQty += item["quantity"] | 0;
-        itemCount = totalQty;
-      }
-    }
-  }
-  http.end();
-}
-
-// ============================
-// SCAN API
-// ============================
-void sendItemScanToAPI(String rfidTag) {
-  if (WiFi.status() != WL_CONNECTED) { connectToWiFi(); if (WiFi.status() != WL_CONNECTED) return; }
-  WiFiClientSecure client; client.setInsecure();
-  HTTPClient http;
-  http.begin(client, SCAN_ENDPOINT);
-  http.addHeader("Content-Type", "application/json");
-  StaticJsonDocument<200> doc;
-  doc["cart_id"] = CART_ID; doc["rfid_tag"] = rfidTag; doc["action"] = "toggle";
-  String requestBody; serializeJson(doc, requestBody);
-  int httpResponseCode = http.POST(requestBody);
-  if (httpResponseCode > 0) {
-    String response = http.getString();
-    if (httpResponseCode == 200) {
-      StaticJsonDocument<4096> respDoc;
-      DeserializationError error = deserializeJson(respDoc, response);
-      if (!error && respDoc["success"]) {
-        const char* productName = respDoc["session"]["lastAction"]["product"] | "Item";
-        const char* action = respDoc["session"]["lastAction"]["action"] | "added";
-        int totalCents = respDoc["session"]["totalCents"] | 0;
-        cartTotal = totalCents / 100.0;
-        JsonArray items = respDoc["session"]["items"];
-        int totalQty = 0;
-        for (JsonVariant item : items) totalQty += item["quantity"] | 0;
-        itemCount = totalQty;
-        cartActive = true;
-        if (strcmp(action, "removed") == 0) { flashRed(2); beepRemoved(); }
-        else { flashGreen(2); beepDouble(); }
-        tftShowScanned(String(productName), cartTotal, String(action));
-        delay(2000); tftShowReady(); setGreen();
-      } else {
-        tftShowError("Parse error"); delay(2000); tftShowReady();
-      }
-    } else {
-      tftShowError("Server error"); delay(2000); tftShowReady();
-    }
-  } else {
-    tftShowError("No connection"); delay(2000); tftShowReady();
-  }
-  http.end();
-}
-
-// ============================
-// SETUP
-// ============================
+// ============================================================
+//  SETUP
+// ============================================================
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("\n\n=== SmartCart V4.2 ===");
+  Serial.println("\n=== SmartCart cart_004 ===");
 
-  pinMode(BUZZER_PIN, OUTPUT); pinMode(RED_LED, OUTPUT); pinMode(GREEN_LED, OUTPUT);
-  digitalWrite(BUZZER_PIN, LOW); digitalWrite(RED_LED, LOW); digitalWrite(GREEN_LED, LOW);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(RED_LED, OUTPUT);
+  digitalWrite(RED_LED, LOW);
 
-  SPI_TFT.begin(14, -1, 13, TFT_CS);
+  SPI_TFT.begin(TFT_SCK, -1, TFT_MOSI, TFT_CS);
   tft.init(240, 240, SPI_MODE3);
   tft.setRotation(0);
-  tftBootScreen();
-  delay(1000);
-  bootAnimation();
+  tftClear();
+  tftHeader("Booting...", "");
 
-  SPI.begin(18, 19, 23, RC522_SS);
-  mfrc522.PCD_Init();
-  delay(500);
-  byte version = mfrc522.PCD_ReadRegister(MFRC522::VersionReg);
-  Serial.print("RC522: 0x"); Serial.println(version, HEX);
+  SPI.begin(RC522_SCK, RC522_MISO, RC522_MOSI, RC522_SS);
+  rfid.PCD_Init();
+  delay(50);
 
-  connectToWiFi();
-  tftShowQRCode();
-  Serial.println("Ready.");
+  tftLine(80, "Connecting WiFi...", ST77XX_MUTED, 1);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  unsigned long t0 = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 15000) {
+    delay(300);
+    Serial.print(".");
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi: " + WiFi.localIP().toString());
+    tftLine(110, "WiFi connected", ST77XX_GREEN, 1);
+  } else {
+    Serial.println("\nWiFi FAILED");
+    tftLine(110, "WiFi FAILED", ST77XX_RED, 1);
+  }
+
+  delay(800);
+  currentState = ST_IDLE;
+  stateEnteredAt = millis();
+  showIdle();
 }
 
-// ============================
-// LOOP
-// ============================
+// ============================================================
+//  MAIN LOOP
+// ============================================================
 void loop() {
-  if (WiFi.status() != WL_CONNECTED) connectToWiFi();
-
+  char key = keypad.getKey();
   unsigned long now = millis();
-  if (now - lastSyncTime > SYNC_INTERVAL_MS) {
-    lastSyncTime = now;
-    syncCartState();
+
+  if (errorMessage.length() > 0 && (now - errorShownAt) > 3000) {
+    errorMessage = "";
+    if (currentState == ST_SCAN_MODE) showScanMode();
   }
 
-  if (!mfrc522.PICC_IsNewCardPresent()) { delay(50); return; }
-  if (!mfrc522.PICC_ReadCardSerial()) { delay(50); return; }
-
-  String currentTag = "";
-  for (byte i = 0; i < mfrc522.uid.size; i++) {
-    currentTag += String(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "");
-    currentTag += String(mfrc522.uid.uidByte[i], HEX);
+  // ---------------- IDLE ----------------
+  if (currentState == ST_IDLE) {
+    if (key) {
+      beep();
+      typed = "";
+      phoneNumber = "";
+      customerName = "";
+      customerId = "";
+      authToken = "";
+      errorMessage = "";
+      currentState = ST_PHONE_ENTRY;
+      stateEnteredAt = now;
+      showPhoneEntry();
+    }
+    return;
   }
-  currentTag.toUpperCase();
 
-  if (currentTag != lastScannedTag || (now - lastScanTime) > DEBOUNCE_DELAY_MS) {
-    Serial.print(">>> Tag: "); Serial.println(currentTag);
-    lastScannedTag = currentTag; lastScanTime = now;
-    tftShowStatus("Scanning", currentTag, ST77XX_CYAN);
-    sendItemScanToAPI(currentTag);
+  // ---------------- PHONE ENTRY ----------------
+  if (currentState == ST_PHONE_ENTRY) {
+    if (key) {
+      beep();
+      if (key == '*') {
+        typed = "";
+      } else if (key == '#') {
+        if (typed.length() >= 10) {
+          phoneNumber = typed;
+          currentState = ST_LOOKING_UP;
+          stateEnteredAt = now;
+          tftClear();
+          tftHeader("Looking up...", "");
+        }
+      } else {
+        if (typed.length() < 10) typed += key;
+      }
+      showPhoneEntry();
+    }
+    return;
   }
-  mfrc522.PICC_HaltA();
-  mfrc522.PCD_StopCrypto1();
-  delay(500);
+
+  // ---------------- LOOKING UP ----------------
+  if (currentState == ST_LOOKING_UP) {
+    String name, id;
+    if (lookupCustomer(phoneNumber, name, id)) {
+      customerName = name;
+      customerId   = id;
+      beepSuccess();
+      currentState = ST_WELCOME;
+      stateEnteredAt = now;
+      showWelcome();
+    } else {
+      beepError();
+      currentState = ST_NOT_REGISTERED;
+      stateEnteredAt = now;
+      showNotRegistered();
+    }
+    return;
+  }
+
+  // ---------------- NOT REGISTERED ----------------
+  if (currentState == ST_NOT_REGISTERED) {
+    if (now - stateEnteredAt > 5000) {
+      typed = "";
+      currentState = ST_PHONE_ENTRY;
+      stateEnteredAt = now;
+      showPhoneEntry();
+    }
+    return;
+  }
+
+  // ---------------- WELCOME ----------------
+  if (currentState == ST_WELCOME) {
+    if (key == '#') {
+      beep();
+      currentState = ST_MODE_MENU;
+      stateEnteredAt = now;
+      showModeMenu();
+    }
+    return;
+  }
+
+  // ---------------- MODE MENU ----------------
+  if (currentState == ST_MODE_MENU) {
+    if (key == '1') {
+      beep();
+      currentState = ST_WEBSITE_QR;
+      stateEnteredAt = now;
+      lastPollAt = 0;
+      showQR();
+    } else if (key == '2') {
+      beep();
+      typed = "";
+      currentState = ST_MANUAL_PIN;
+      stateEnteredAt = now;
+      showPinEntry("Enter PIN");
+    }
+    return;
+  }
+
+  // ---------------- WEBSITE QR ----------------
+  if (currentState == ST_WEBSITE_QR) {
+    if (now - lastPollAt > 1500) {
+      lastPollAt = now;
+      String body = "{\"cart_id\":\"" + String(CART_ID) + "\"}";
+      String resp = httpPost("/api/cart/sync", body);
+      if (resp.length() > 0) {
+        StaticJsonDocument<2048> doc;
+        if (!deserializeJson(doc, resp)) {
+          if (!doc["session"].isNull()) {
+            beepSuccess();
+            syncCart();
+            currentState = ST_SCAN_MODE;
+            stateEnteredAt = now;
+            showScanMode();
+          }
+        }
+      }
+    }
+    return;
+  }
+
+  // ---------------- MANUAL PIN ----------------
+  if (currentState == ST_MANUAL_PIN) {
+    if (key) {
+      beep();
+      if (key == '*') {
+        typed = "";
+      } else if (key == '#') {
+        if (typed.length() >= 4) {
+          tftClear();
+          tftHeader("Signing in...", "");
+          if (login(phoneNumber, typed)) {
+            tftHeader("Pairing cart...", "");
+            if (pairCart()) {
+              beepSuccess();
+              syncCart();
+              typed = "";
+              currentState = ST_SCAN_MODE;
+              stateEnteredAt = now;
+              showScanMode();
+            } else {
+              beepError();
+              errorMessage = "Pairing failed";
+              errorShownAt = now;
+              showScanMode();
+              tftError(errorMessage.c_str());
+              delay(1500);
+              typed = "";
+              currentState = ST_MODE_MENU;
+              stateEnteredAt = now;
+              showModeMenu();
+            }
+          } else {
+            beepError();
+            if (errorMessage.length() == 0) errorMessage = "Wrong PIN";
+            errorShownAt = now;
+            showPinEntry("Enter PIN");
+            tftError(errorMessage.c_str());
+            delay(1800);
+            typed = "";
+            currentState = ST_MANUAL_PIN;
+            stateEnteredAt = now;
+            errorMessage = "";
+            showPinEntry("Enter PIN");
+          }
+        }
+      } else {
+        if (typed.length() < 6) typed += key;
+      }
+      showPinEntry("Enter PIN");
+    }
+    return;
+  }
+
+  // ---------------- SCAN MODE ----------------
+  if (currentState == ST_SCAN_MODE) {
+    if (key) {
+      Serial.print("[ScanMode] Key: ");
+      Serial.println(key);
+      if (key == '#') {
+        beep();
+        currentState = ST_CONFIRM_CANCEL;
+        stateEnteredAt = now;
+        showConfirmCancel();
+        return;
+      }
+      lastPollAt = now;
+      return;
+    }
+
+    if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+      String uid = "";
+      for (byte i = 0; i < rfid.uid.size; i++) {
+        if (rfid.uid.uidByte[i] < 0x10) uid += "0";
+        uid += String(rfid.uid.uidByte[i], HEX);
+      }
+      uid.toUpperCase();
+      Serial.println("UID: " + uid);
+      rfid.PICC_HaltA();
+
+      if (uid != lastUID || (now - lastUIDAt > 2000)) {
+        lastUID = uid;
+        lastUIDAt = now;
+        if (scanItem(uid)) {
+          beepSuccess();
+          showScanMode();
+        } else {
+          beepError();
+          errorShownAt = now;
+          showScanMode();
+          tftError(errorMessage.length() ? errorMessage.c_str() : "Scan failed");
+        }
+      }
+    }
+
+    if (now - lastPollAt > 1000) {
+      lastPollAt = now;
+      syncCart();
+      if (cartIsDocked) {
+        beepSuccess();
+        digitalWrite(RED_LED, HIGH);
+        currentState = ST_DOCKED_PAYMENT;
+        stateEnteredAt = now;
+        showDocked();
+      } else {
+        showScanMode();
+      }
+    }
+    return;
+  }
+
+  // ---------------- CONFIRM CANCEL ----------------
+  if (currentState == ST_CONFIRM_CANCEL) {
+    if (key) {
+      beep();
+      if (key == '#') {
+        currentState = ST_CART_CLEARED;
+        stateEnteredAt = now;
+        tftClear();
+        tftHeader("Clearing cart...", "");
+        resetCart();
+        currentState = ST_CART_CLEARED;
+        stateEnteredAt = now;
+        showCartCleared();
+      } else if (key == '*') {
+        currentState = ST_SCAN_MODE;
+        stateEnteredAt = now;
+        lastPollAt = now;
+        showScanMode();
+      }
+    }
+    return;
+  }
+
+  // ---------------- CART CLEARED ----------------
+  if (currentState == ST_CART_CLEARED) {
+    if (now - stateEnteredAt > 2000) {
+      typed = "";
+      phoneNumber = "";
+      customerName = "";
+      customerId = "";
+      authToken = "";
+      sessionItems = "";
+      subtotalCents = 0;
+      taxCents = 0;
+      totalCents = 0;
+      cartIsDocked = false;
+      lastUID = "";
+      errorMessage = "";
+      digitalWrite(RED_LED, LOW);
+      currentState = ST_IDLE;
+      stateEnteredAt = now;
+      showIdle();
+    }
+    return;
+  }
+
+  // ---------------- DOCKED ----------------
+  if (currentState == ST_DOCKED_PAYMENT) {
+    if (authToken.length() == 0) {
+      if (now - stateEnteredAt > 5000) {
+        currentState = ST_PAYMENT_DONE;
+        stateEnteredAt = now;
+        showPaymentDone(true, "Paid via website");
+        digitalWrite(RED_LED, LOW);
+      }
+      return;
+    }
+    if (now - stateEnteredAt > 1500) {
+      typed = "";
+      currentState = ST_MANUAL_PAY_PIN;
+      stateEnteredAt = now;
+      showPinEntry("Pay PIN");
+    }
+    return;
+  }
+
+  // ---------------- MANUAL PAY PIN ----------------
+  if (currentState == ST_MANUAL_PAY_PIN) {
+    if (key) {
+      beep();
+      if (key == '*') {
+        typed = "";
+      } else if (key == '#') {
+        if (typed.length() >= 4) {
+          tftClear();
+          tftHeader("Paying...", "");
+          String resp = walletPay(typed);
+          typed = "";
+          if (resp.indexOf("\"success\":true") >= 0) {
+            beepSuccess();
+            currentState = ST_PAYMENT_DONE;
+            stateEnteredAt = now;
+            showPaymentDone(true, "Wallet debited");
+            digitalWrite(RED_LED, LOW);
+          } else {
+            beepError();
+            errorMessage = "Payment failed";
+            errorShownAt = now;
+            showPinEntry("Pay PIN");
+            tftError(errorMessage.c_str());
+            delay(2200);
+            currentState = ST_MANUAL_PAY_PIN;
+            stateEnteredAt = now;
+            showPinEntry("Pay PIN");
+          }
+        }
+      } else {
+        if (typed.length() < 6) typed += key;
+      }
+      showPinEntry("Pay PIN");
+    }
+    return;
+  }
+
+  // ---------------- PAYMENT DONE ----------------
+  if (currentState == ST_PAYMENT_DONE) {
+    if (now - stateEnteredAt > 6000) {
+      typed = "";
+      phoneNumber = "";
+      customerName = "";
+      customerId = "";
+      authToken = "";
+      sessionItems = "";
+      subtotalCents = 0;
+      taxCents = 0;
+      totalCents = 0;
+      cartIsDocked = false;
+      lastUID = "";
+      errorMessage = "";
+      currentState = ST_IDLE;
+      stateEnteredAt = now;
+      showIdle();
+    }
+    return;
+  }
 }

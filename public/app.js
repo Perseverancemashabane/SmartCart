@@ -1018,7 +1018,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // still restore it and complete pairing.
   // =====================================================================
   const urlParams = new URLSearchParams(window.location.search);
-  let urlCartId = urlParams.get('cart_id');
+let urlCartId = urlParams.get('cart_id');
+
+// Fallback: read from URL hash (#cart=cart_004) if the query param is missing
+// This handles cases where the phone's QR scanner strips query strings.
+if (!urlCartId && window.location.hash) {
+  const hash = window.location.hash.substring(1); // strip leading '#'
+  const hashParams = new URLSearchParams(hash);
+  urlCartId = hashParams.get('cart');
+  if (urlCartId) {
+    console.log('[AutoPair] Cart ID from hash:', urlCartId);
+  }
+}
 
   if (urlCartId) {
     console.log('[AutoPair] Cart ID from URL:', urlCartId);

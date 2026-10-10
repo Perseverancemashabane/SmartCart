@@ -194,7 +194,6 @@ class QRScannerModule {
     if (cartId.includes('cart_id=')) {
       cartId = cartId.split('cart_id=')[1].split('&')[0];
     }
-    // FIX: default to lowercase cart_004 to match backend
     this.triggerPairing(cartId || 'cart_004');
   }
   handleManualPairing() {
@@ -203,7 +202,6 @@ class QRScannerModule {
       appBus.emit('ui:toast', { message: 'Please enter a valid Cart ID', type: 'warning' });
       return;
     }
-    // FIX: don't force uppercase — backend uses exact cart IDs like "cart_004"
     this.triggerPairing(val);
   }
   triggerPairing(cartId) {
@@ -245,7 +243,6 @@ class UIController {
   }
   bindEvents() {
     this.bus.on('cart:paired', (data) => {
-      // FIX: case-insensitive cart_ prefix strip
       if (this.pairedCartIdDisplay) {
         const shortId = data.cartId.replace(/^cart_/i, '');
         this.pairedCartIdDisplay.textContent = `Cart #${shortId}`;
@@ -296,7 +293,6 @@ class UIController {
           this.showToast('Your cart is empty! Add items before checkout.', 'warning');
           return;
         }
-        // Check shopping list for unchecked items
         try {
           const res = await fetch(`${window.API_URL}/api/shopping-list/active`, {
             credentials: 'include'
@@ -478,7 +474,7 @@ class UIController {
 
 
 // ==========================================================================
-// 5. ShoppingListProgressModule — banner in cart view
+// 5. ShoppingListProgressModule
 // ==========================================================================
 class ShoppingListProgressModule {
   constructor(bus, cartModule) {
@@ -669,7 +665,6 @@ class CheckoutModule {
       }
       this.closePinModal();
       this.showReceipt('Wallet', data);
-      // Mark shopping list as complete
       try {
         await fetch(`${window.API_URL}/api/shopping-list/complete`, {
           method: 'POST',
@@ -1016,25 +1011,45 @@ document.addEventListener('DOMContentLoaded', () => {
   const mockFeed = new MockLiveFeedModule(appBus, cartModule);
   const authModule = new AuthModule(appBus);
 
-  // Auto-pair if URL has ?cart_id=...
+  // =====================================================================
+  // AUTO-PAIR FROM URL
+  // Reads ?cart_id=... from the URL. Persists to localStorage so that
+  // after a login redirect (which may strip the query string), we can
+  // still restore it and complete pairing.
+  // =====================================================================
   const urlParams = new URLSearchParams(window.location.search);
-  const urlCartId = urlParams.get('cart_id');
+  let urlCartId = urlParams.get('cart_id');
+
+  if (urlCartId) {
+    console.log('[AutoPair] Cart ID from URL:', urlCartId);
+document.title = 'AutoPair: ' + (urlCartId || 'NONE');
+    localStorage.setItem('pendingCartId', urlCartId);
+  } else {
+    const saved = localStorage.getItem('pendingCartId');
+    if (saved) {
+      urlCartId = saved;
+      console.log('[AutoPair] Restored cart ID from localStorage:', urlCartId);
+    }
+  }
+
   if (urlCartId) {
     const cartInput = document.getElementById('input-cart-id');
     if (cartInput) cartInput.value = urlCartId;
-    // Wait for auth to load before pairing
+
     setTimeout(() => {
       if (authModule.customer) {
-        console.log('[AutoPair] Pairing from URL:', urlCartId);
-        appBus.emit('qr:scanned', { cartId: urlCartId });
+        console.log('[AutoPair] Logged in — pairing now:', urlCartId);
+      document.title = 'Pairing: ' + urlCartId;
+      appBus.emit('qr:scanned', { cartId: urlCartId });
+        localStorage.removeItem('pendingCartId');
       } else {
-        console.warn('[AutoPair] Not logged in yet, waiting for user to log in');
-        // Watch for login completion
+        console.log('[AutoPair] Waiting for login before pairing:', urlCartId);
         const checkLogin = setInterval(() => {
           if (authModule.customer) {
             clearInterval(checkLogin);
-            console.log('[AutoPair] User logged in, pairing now:', urlCartId);
+            console.log('[AutoPair] Login detected — pairing:', urlCartId);
             appBus.emit('qr:scanned', { cartId: urlCartId });
+            localStorage.removeItem('pendingCartId');
           }
         }, 1000);
       }
@@ -1060,6 +1075,11 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('[Pair] Fetch failed:', err);
       appBus.emit('ui:toast', { message: 'Pairing failed', type: 'error' });
     }
+  });
+
+  // Clear pending cart when pairing completes
+  appBus.on('cart:paired', () => {
+    localStorage.removeItem('pendingCartId');
   });
 
   let lastServerSignature = '';
@@ -1116,7 +1136,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (paid === 'true' && paidCartId && paidReference) {
     (async () => {
       try {
-        // 1. Verify with Paystack and mark Transaction as completed
         const verifyRes = await fetch(`${window.API_URL}/api/checkout/verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1134,7 +1153,6 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
-        // 2. Archive shopping list (if any) for this customer
         try {
           await fetch(`${window.API_URL}/api/shopping-list/complete`, {
             method: 'POST',
@@ -1142,7 +1160,6 @@ document.addEventListener('DOMContentLoaded', () => {
           });
         } catch (e) { /* silent */ }
 
-        // 3. Reset the cart session
         await fetch(`${window.API_URL}/api/cart/reset`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1150,7 +1167,6 @@ document.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify({ cart_id: paidCartId })
         });
 
-        // 4. Clean URL and show success
         window.history.replaceState({}, '', window.location.pathname);
         appBus.emit('ui:toast', {
           message: `Payment successful! R ${verifyData.amountRands} received.`,

@@ -107,7 +107,7 @@ export async function POST(request: Request) {
       phoneNumber: customer.phoneNumber,
     });
 
-    const response = NextResponse.json({
+const response = NextResponse.json({
   success: true,
   token,
   cookieName: SESSION_COOKIE_NAME,
@@ -119,6 +119,9 @@ export async function POST(request: Request) {
     walletBalanceCents: customer.walletBalanceCents,
   },
 });
+
+response.cookies.set(SESSION_COOKIE_NAME, token, sessionCookieOptions());
+return response;
 
     response.cookies.set(SESSION_COOKIE_NAME, token, sessionCookieOptions());
     return response;

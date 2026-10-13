@@ -6,16 +6,16 @@ async function main() {
   console.log('=== Migrating product tags ===\n');
 
   // Get all products that still have a legacy rfidTagId
-  const products = await prisma.product.findMany({
-    where: {
-      rfidTagId: { not: null },
-    },
-    select: {
-      id: true,
-      name: true,
-      rfidTagId: true,
-    },
-  });
+ const products = await prisma.product.findMany({
+  where: {
+    NOT: { rfidTagId: null },
+  },
+  select: {
+    id: true,
+    name: true,
+    rfidTagId: true,
+  },
+});
 
   console.log(`Found ${products.length} product(s) with legacy tag.\n`);
 

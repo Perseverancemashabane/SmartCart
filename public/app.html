@@ -588,6 +588,246 @@
       color: #0f172a;
     }
     .checkout-warning-actions .btn-pay-anyway:hover { background: #d97706; }
+
+    /* ============================================================
+       NEW: Watcher request banner
+       ============================================================ */
+    .watcher-banner {
+      background: linear-gradient(135deg, rgba(248,113,113,0.12), rgba(239,68,68,0.08));
+      border: 1px solid rgba(248,113,113,0.4);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .watcher-banner.hidden { display: none; }
+    .watcher-banner .wb-icon {
+      font-size: 1.4rem;
+      color: #f87171;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .watcher-banner .wb-body { flex: 1; }
+    .watcher-banner .wb-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #fecaca;
+      margin-bottom: 4px;
+    }
+    .watcher-banner .wb-items {
+      font-size: 0.85rem;
+      color: #fca5a5;
+      line-height: 1.4;
+    }
+    .watcher-banner .wb-items span {
+      display: inline-block;
+      background: rgba(248,113,113,0.15);
+      padding: 2px 8px;
+      border-radius: 6px;
+      margin: 2px 4px 2px 0;
+    }
+
+    /* ============================================================
+       NEW: Review modal
+       ============================================================ */
+    .review-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.95);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1150;
+      padding: 20px;
+    }
+    .review-modal.show { display: flex; }
+    .review-modal-card {
+      background: #1e293b;
+      border-radius: 20px;
+      padding: 24px 22px;
+      max-width: 440px;
+      width: 100%;
+      max-height: 92vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }
+    .review-modal-card h2 {
+      font-size: 1.3rem;
+      margin-bottom: 4px;
+      text-align: center;
+    }
+    .review-sub {
+      color: #94a3b8;
+      text-align: center;
+      font-size: 0.85rem;
+      margin-bottom: 20px;
+    }
+    .review-section {
+      margin-bottom: 18px;
+    }
+    .review-section-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #94a3b8;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .review-items {
+      background: rgba(15,23,42,0.5);
+      border-radius: 12px;
+      padding: 12px 14px;
+    }
+    .review-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      font-size: 0.9rem;
+      border-bottom: 1px solid rgba(51,65,85,0.5);
+    }
+    .review-item:last-child { border-bottom: none; }
+    .review-item-name { color: #e2e8f0; }
+    .review-item-price { color: #94a3b8; font-weight: 600; }
+    .review-total {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 16px;
+      background: rgba(59,130,246,0.12);
+      border: 1px solid rgba(59,130,246,0.3);
+      border-radius: 12px;
+      margin-top: 4px;
+    }
+    .review-total-label {
+      font-size: 0.85rem;
+      color: #93c5fd;
+      font-weight: 600;
+    }
+    .review-total-value {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .review-removals {
+      background: rgba(248,113,113,0.08);
+      border: 1px solid rgba(248,113,113,0.3);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+    }
+    .review-removal-item {
+      color: #fecaca;
+      font-size: 0.9rem;
+      padding: 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .review-removal-item::before {
+      content: '✗';
+      color: #f87171;
+      font-weight: 700;
+    }
+    .review-hint {
+      font-size: 0.78rem;
+      color: #94a3b8;
+      text-align: center;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+    .review-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .review-actions button {
+      flex: 1;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .review-back {
+      background: #334155;
+      color: #f8fafc;
+    }
+    .review-back:hover { background: #475569; }
+    .review-confirm {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+    }
+    .review-confirm:hover { background: linear-gradient(135deg, #059669, #047857); }
+
+    /* ============================================================
+       NEW: Waiting-for-dock modal
+       ============================================================ */
+    .dock-wait-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.95);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1160;
+      padding: 20px;
+    }
+    .dock-wait-modal.show { display: flex; }
+    .dock-wait-card {
+      background: #1e293b;
+      border-radius: 20px;
+      padding: 36px 28px 28px;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }
+    .dock-wait-icon {
+      font-size: 3rem;
+      color: #60a5fa;
+      margin-bottom: 16px;
+    }
+    .dock-wait-card h2 {
+      font-size: 1.4rem;
+      margin-bottom: 8px;
+    }
+    .dock-wait-card p {
+      color: #94a3b8;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+    .dock-wait-spinner {
+      width: 44px;
+      height: 44px;
+      border: 3px solid #334155;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .dock-wait-cancel {
+      width: 100%;
+      padding: 12px;
+      background: transparent;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      color: #94a3b8;
+      font-size: 0.9rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .dock-wait-cancel:hover { background: #334155; color: #f8fafc; }
+    .dock-wait-cancel:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -696,6 +936,15 @@
 
       <main class="dashboard-main">
 
+        <!-- NEW: Watcher removal-request banner -->
+        <section id="watcher-banner" class="watcher-banner hidden">
+          <div class="wb-icon"><i class="fa-solid fa-bell"></i></div>
+          <div class="wb-body">
+            <div class="wb-title">Removal requested</div>
+            <div class="wb-items" id="watcher-banner-items"></div>
+          </div>
+        </section>
+
         <!-- Shopping List Progress Banner -->
         <section id="shopping-list-progress" class="shopping-list-banner hidden">
           <div class="sl-header" id="sl-toggle">
@@ -765,15 +1014,65 @@
           <div class="checkout-action-wrapper" id="checkout-wrapper">
             <button id="btn-checkout" class="btn btn-primary btn-block btn-lg btn-locked" disabled>
               <i class="fa-solid fa-lock" id="checkout-btn-icon"></i>
-              <span id="checkout-btn-text">Return Cart to Base Station to Pay</span>
+              <span id="checkout-btn-text">Cart is Empty</span>
             </button>
             <p id="checkout-tooltip" class="checkout-tooltip">
-              <i class="fa-solid fa-triangle-exclamation"></i> Cart must be docked at the checkout base station to unlock payment.
+              <i class="fa-solid fa-info-circle"></i> Add items using RFID scanner to proceed.
             </p>
           </div>
         </section>
       </main>
     </section>
+
+    <!-- ============================================================
+         NEW: REVIEW MODAL
+         ============================================================ -->
+    <div id="modal-review" class="review-modal">
+      <div class="review-modal-card">
+        <h2>Review Order</h2>
+        <p class="review-sub">Make sure everything looks right before docking</p>
+
+        <div class="review-section" id="review-removals-section" style="display:none;">
+          <div class="review-section-title">Removal requested</div>
+          <div class="review-removals" id="review-removals"></div>
+          <div class="review-hint">To remove an item, go back to scanning and re-scan it.</div>
+        </div>
+
+        <div class="review-section">
+          <div class="review-section-title" id="review-items-title">Items</div>
+          <div class="review-items" id="review-items"></div>
+        </div>
+
+        <div class="review-total">
+          <span class="review-total-label">Total</span>
+          <span class="review-total-value" id="review-total">R 0.00</span>
+        </div>
+
+        <div class="review-actions">
+          <button class="review-back" id="btn-review-back">
+            Continue Shopping
+          </button>
+          <button class="review-confirm" id="btn-review-confirm">
+            Confirm & Pay
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         NEW: WAITING-FOR-DOCK MODAL
+         ============================================================ -->
+    <div id="modal-dock-wait" class="dock-wait-modal">
+      <div class="dock-wait-card">
+        <div class="dock-wait-icon"><i class="fa-solid fa-cart-flatbed"></i></div>
+        <div class="dock-wait-spinner"></div>
+        <h2>Dock the cart now</h2>
+        <p>Take the cart to the base station to enable payment. This will unlock automatically once the cart is docked.</p>
+        <button class="dock-wait-cancel" id="btn-dock-wait-cancel">
+          Cancel and continue shopping
+        </button>
+      </div>
+    </div>
 
     <!-- PAYMENT METHOD MODAL -->
     <div id="modal-payment-method" class="payment-method-modal">

@@ -7,6 +7,22 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================================
+//  STAFF (NEW — for anti-theft PIN + admin access)
+// ============================================================
+model Staff {
+  id        Int       @id @default(autoincrement())
+  name      String    @db.VarChar(100)
+  pinHash   String    @map("pin_hash") @db.VarChar(200)
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@map("staff")
+}
+
+// ============================================================
+//  PRODUCT (unchanged)
+// ============================================================
 model Product {
   id            Int                @id @default(autoincrement())
   rfidTagId     String             @unique @map("rfid_tag_id") @db.VarChar(50)
@@ -21,6 +37,9 @@ model Product {
   @@map("products")
 }
 
+// ============================================================
+//  CART (unchanged)
+// ============================================================
 model Cart {
   id             String        @id @db.VarChar(50)
   stationRfidTag String        @unique @map("station_rfid_tag") @db.VarChar(50)
@@ -32,6 +51,9 @@ model Cart {
   @@map("carts")
 }
 
+// ============================================================
+//  CART SESSION (added 4 premium fields)
+// ============================================================
 model CartSession {
   id            Int           @id @default(autoincrement())
   cartId        String        @map("cart_id") @db.VarChar(50)
@@ -43,6 +65,13 @@ model CartSession {
   totalCents    Int?          @default(0) @map("total_cents")
   createdAt     DateTime?     @default(now()) @map("created_at") @db.Timestamp(6)
   closedAt      DateTime?     @map("closed_at") @db.Timestamp(6)
+
+  // ⭐ NEW premium fields
+  paymentStatus      String    @default("unpaid") @map("payment_status") @db.VarChar(20)
+  paymentRequestedAt DateTime? @map("payment_requested_at") @db.Timestamp(6)
+  cartAbandoned      Boolean   @default(false) @map("cart_abandoned")
+  alarmTriggered     Boolean   @default(false) @map("alarm_triggered")
+
   items         CartItem[]
   cart          Cart          @relation(fields: [cartId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   customer      Customer?     @relation(fields: [customerId], references: [id])
@@ -51,6 +80,9 @@ model CartSession {
   @@map("cart_sessions")
 }
 
+// ============================================================
+//  CART ITEM (added 2 premium fields)
+// ============================================================
 model CartItem {
   id             Int         @id @default(autoincrement())
   sessionId      Int         @map("session_id")
@@ -59,6 +91,11 @@ model CartItem {
   unitPriceCents Int         @map("unit_price_cents")
   subtotalCents  Int         @map("subtotal_cents")
   created_at     DateTime?   @default(now()) @db.Timestamp(6)
+
+  // ⭐ NEW premium fields
+  confirmedByWatcher Boolean   @default(false) @map("confirmed_by_watcher")
+  removeRequestedAt  DateTime? @map("remove_requested_at") @db.Timestamp(6)
+
   product        Product     @relation(fields: [productId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   session        CartSession @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -66,6 +103,9 @@ model CartItem {
   @@map("cart_items")
 }
 
+// ============================================================
+//  TRANSACTION (unchanged)
+// ============================================================
 model Transaction {
   id                    Int         @id @default(autoincrement())
   sessionId             Int         @map("session_id")
@@ -79,6 +119,9 @@ model Transaction {
   @@map("transactions")
 }
 
+// ============================================================
+//  LEGACY items (unchanged — used by /api/scan)
+// ============================================================
 model items {
   id      Int     @id @default(autoincrement())
   tag_uid String  @unique @db.VarChar(20)
@@ -86,6 +129,9 @@ model items {
   price   Decimal @db.Decimal(10, 2)
 }
 
+// ============================================================
+//  LEGACY scans (unchanged)
+// ============================================================
 model scans {
   id         Int       @id @default(autoincrement())
   tag_uid    String    @db.VarChar(20)
@@ -94,6 +140,9 @@ model scans {
   scanned_at DateTime? @default(now()) @db.Timestamp(6)
 }
 
+// ============================================================
+//  CUSTOMER (unchanged)
+// ============================================================
 model Customer {
   id                   Int                 @id @default(autoincrement())
   phoneNumber          String              @unique @map("phone_number") @db.VarChar(20)
@@ -111,6 +160,9 @@ model Customer {
   @@map("customers")
 }
 
+// ============================================================
+//  WALLET TRANSACTION (unchanged)
+// ============================================================
 model WalletTransaction {
   id          Int      @id @default(autoincrement())
   customerId  Int      @map("customer_id")
@@ -124,6 +176,9 @@ model WalletTransaction {
   @@map("wallet_transactions")
 }
 
+// ============================================================
+//  SHOPPING LIST (unchanged)
+// ============================================================
 model ShoppingList {
   id          Int                @id @default(autoincrement())
   customerId  Int                @map("customer_id")
@@ -138,6 +193,9 @@ model ShoppingList {
   @@map("shopping_lists")
 }
 
+// ============================================================
+//  SHOPPING LIST ITEM (added 1 premium field)
+// ============================================================
 model ShoppingListItem {
   id         Int          @id @default(autoincrement())
   listId     Int          @map("list_id")
@@ -147,6 +205,10 @@ model ShoppingListItem {
   isScanned  Boolean      @default(false) @map("is_scanned")
   scannedAt  DateTime?    @map("scanned_at") @db.Timestamp(6)
   createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamp(6)
+
+  // ⭐ NEW premium field
+  removeRequestedAt DateTime? @map("remove_requested_at") @db.Timestamp(6)
+
   list       ShoppingList @relation(fields: [listId], references: [id], onDelete: Cascade)
   product    Product?     @relation(fields: [productId], references: [id])
 

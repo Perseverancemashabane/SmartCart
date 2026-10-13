@@ -5,12 +5,11 @@ export async function GET() {
   try {
     const products = await prisma.product.findMany({
       orderBy: { name: 'asc' },
-      select: {
-        id: true,
-        rfidTagId: true,
-        name: true,
-        priceCents: true,
-        stockQuantity: true,
+      include: {
+        tags: {
+          where: { isActive: true },
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
 
@@ -18,7 +17,10 @@ export async function GET() {
       success: true,
       products: products.map(p => ({
         id: p.id,
-        rfidTag: p.rfidTagId,
+        // Backwards-compat: first tag (used by existing simulator buttons)
+        rfidTag: p.tags[0]?.rfidTagId ?? null,
+        // New: full list of tags
+        tags: p.tags.map(t => t.rfidTagId),
         name: p.name,
         priceCents: p.priceCents,
         priceRands: (p.priceCents / 100).toFixed(2),

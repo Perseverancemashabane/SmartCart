@@ -11,13 +11,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'cart_id and rfid_tag are required' }, { status: 400 });
     }
 
-    const product = await prisma.product.findUnique({
+    // ============================================================
+    // Look up tag in ProductTag → get product
+    // (supports multiple tags per product, e.g. many milk cartons)
+    // ============================================================
+    const productTag = await prisma.productTag.findUnique({
       where: { rfidTagId: rfid_tag },
+      include: { product: true },
     });
 
-    if (!product) {
-      return NextResponse.json({ error: `Product with RFID tag ${rfid_tag} not found` }, { status: 404 });
+    if (!productTag || !productTag.isActive) {
+      return NextResponse.json(
+        { error: `Product with RFID tag ${rfid_tag} not found` },
+        { status: 404 }
+      );
     }
+
+    const product = productTag.product;
 
     const session = await prisma.cartSession.findFirst({
       where: { cartId: cart_id, isActive: true },
@@ -107,10 +117,7 @@ export async function POST(request: Request) {
     }
 
     // ============================================================
-    // ⭐ SHOPPING LIST AUTO-MARK
-    // If this customer has an active shopping list that contains
-    // this product, mark it as found (when added).
-    // If the item is being removed, unmark it as found.
+    // SHOPPING LIST AUTO-MARK
     // ============================================================
     let shoppingListUpdate: any = null;
 
@@ -134,7 +141,6 @@ export async function POST(request: Request) {
 
           if (listItem) {
             if (actionTaken === 'added' || actionTaken === 'incremented') {
-              // Mark as found
               if (!listItem.isScanned) {
                 const updated = await prisma.shoppingListItem.update({
                   where: { id: listItem.id },
@@ -148,14 +154,11 @@ export async function POST(request: Request) {
                   isScanned: true,
                   action: 'marked_found',
                 };
-                console.log(`[ShoppingList] Marked item ${updated.id} (${product.name}) as found`);
               }
             } else if (
               (actionTaken === 'removed' || actionTaken === 'decremented') &&
               listItem.isScanned
             ) {
-              // Unmark if the cart item was removed completely
-              // (only unmark on full removal — decrement means still in cart)
               if (actionTaken === 'removed') {
                 const updated = await prisma.shoppingListItem.update({
                   where: { id: listItem.id },
@@ -169,12 +172,10 @@ export async function POST(request: Request) {
                   isScanned: false,
                   action: 'unmarked',
                 };
-                console.log(`[ShoppingList] Unmarked item ${updated.id} (${product.name})`);
               }
             }
           }
 
-          // Compute fresh progress for this list
           const allListItems = await prisma.shoppingListItem.findMany({
             where: { listId: activeList.id },
           });
@@ -193,7 +194,6 @@ export async function POST(request: Request) {
           };
         }
       } catch (listErr) {
-        // Never let shopping list failure break the scan
         console.warn('[ShoppingList] auto-mark failed (non-fatal):', listErr);
       }
     }
@@ -224,7 +224,8 @@ export async function POST(request: Request) {
       totalCents: updatedSession.totalCents,
       items: updatedSession.items.map((i) => ({
         id: i.id,
-        sku: i.product.rfidTagId,
+        // Use product ID as a stable identifier, since tags may vary
+        sku: i.product.id.toString(),
         name: i.product.name,
         unitPriceCents: i.unitPriceCents,
         quantity: i.quantity,

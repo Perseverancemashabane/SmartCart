@@ -1,6 +1,6 @@
 /**
- * SmartCart IoT - Full Application Logic
- * Cart lifecycle + auth + wallet payment + shopping list
+ * SmartCart IoT - Full Application Logic (v8 — Done Shopping flow)
+ * Cart lifecycle + auth + wallet payment + shopping list + review flow
  */
 
 // ==========================================================================
@@ -35,12 +35,14 @@ class CartStateModule {
     this.isDockedAtStation = false;
     this.paymentStatus = 'unpaid';
     this.vatRate = 0.15;
+    this.removalRequests = []; // [{ name, id, removeRequestedAt }]
   }
   pairCart(id) {
     this.cartId = id;
     this.items = [];
     this.isDockedAtStation = false;
     this.paymentStatus = 'unpaid';
+    this.removalRequests = [];
     this.bus.emit('cart:paired', { cartId: this.cartId });
   }
   unpairCart() {
@@ -49,44 +51,12 @@ class CartStateModule {
     this.items = [];
     this.isDockedAtStation = false;
     this.paymentStatus = 'unpaid';
+    this.removalRequests = [];
     this.bus.emit('cart:unpaired', { cartId: prevId });
   }
-  addItem(itemData) {
-    const existing = this.items.find(i => i.sku === itemData.sku);
-    let affectedItem;
-    if (existing) {
-      existing.quantity += 1;
-      affectedItem = existing;
-    } else {
-      affectedItem = {
-        id: 'item_' + Date.now(),
-        sku: itemData.sku,
-        name: itemData.name,
-        price: parseFloat(itemData.price),
-        quantity: 1,
-        icon: itemData.icon || 'fa-box'
-      };
-      this.items.push(affectedItem);
-    }
-    this.bus.emit('cart:updated', this.getStateSummary());
-    this.bus.emit('cart:item_added', { item: affectedItem });
-    return affectedItem;
-  }
   removeItem(sku) {
-    const i = this.items.findIndex(x => x.sku === sku);
-    if (i === -1) return;
-    const target = this.items[i];
-    if (target.quantity > 1) {
-      target.quantity -= 1;
-    } else {
-      this.items.splice(i, 1);
-    }
-    this.bus.emit('cart:updated', this.getStateSummary());
-    this.bus.emit('cart:item_removed', { item: target });
-  }
-  removeLastItem() {
-    if (this.items.length === 0) return;
-    this.removeItem(this.items[this.items.length - 1].sku);
+    // No-op — items can only be modified by scanning.
+    // Kept for API compatibility.
   }
   clearCart() {
     this.items = [];
@@ -240,6 +210,8 @@ class UIController {
     this.checkoutBtnText = document.getElementById('checkout-btn-text');
     this.checkoutTooltip = document.getElementById('checkout-tooltip');
     this.toastContainer = document.getElementById('toast-container');
+    this.watcherBanner = document.getElementById('watcher-banner');
+    this.watcherBannerItems = document.getElementById('watcher-banner-items');
   }
   bindEvents() {
     this.bus.on('cart:paired', (data) => {
@@ -284,28 +256,19 @@ class UIController {
     this.bus.on('station:changed', (data) => this.renderStationBanner(data.isDocked));
 
     if (this.btnCheckout) {
-      this.btnCheckout.addEventListener('click', async () => {
-        if (!this.cartModule.isDockedAtStation) {
-          this.showToast('Return cart to base station to unlock payment!', 'warning');
-          return;
-        }
+      this.btnCheckout.addEventListener('click', () => {
+        // NEW: Done Shopping button
         if (this.cartModule.items.length === 0) {
-          this.showToast('Your cart is empty! Add items before checkout.', 'warning');
+          this.showToast('Your cart is empty! Add items before checking out.', 'warning');
           return;
         }
-        try {
-          const res = await fetch(`${window.API_URL}/api/shopping-list/active`, {
-            credentials: 'include'
-          });
-          const data = await res.json();
-          if (data.success && data.list && data.list.remaining > 0) {
-            this.showCheckoutWarning(data.list);
-            return;
-          }
-        } catch (err) {
-          // if check fails, just proceed
+        // If already docked (shouldn't happen with new flow, but safety):
+        if (this.cartModule.isDockedAtStation) {
+          this.bus.emit('checkout:open_modal');
+          return;
         }
-        this.bus.emit('checkout:open_modal');
+        // Open review modal
+        appBus.emit('review:open');
       });
     }
     this.bus.on('ui:toast', (data) => this.showToast(data.message, data.type));
@@ -343,26 +306,27 @@ class UIController {
     if (this.summaryVat) this.summaryVat.textContent = CartStateModule.formatCurrency(state.vatAmount);
     if (this.summaryTotal) this.summaryTotal.textContent = CartStateModule.formatCurrency(state.totalAmount);
     this.updateCheckoutButtonState(state.isDocked, state.items.length > 0);
+    this.renderWatcherBanner();
   }
   renderItemsList(items) {
     if (!this.cartItemsContainer) return;
+    // REMOVED +/- buttons. Items can only be modified by scanning.
     this.cartItemsContainer.innerHTML = items.map(item => {
       const subtotal = item.price * item.quantity;
+      const hasRemovalRequest = this.cartModule.removalRequests.some(r => r.sku === item.sku);
       return `
-        <div class="cart-item-card" id="card-${item.sku}">
+        <div class="cart-item-card${hasRemovalRequest ? ' remove-requested' : ''}" id="card-${item.sku}">
           <div class="item-left">
             <div class="item-icon-box"><i class="fa-solid ${item.icon || 'fa-box'}"></i></div>
             <div class="item-details">
               <h4>${item.name}</h4>
-              <div class="item-meta"><span>SKU:</span><span class="rfid-tag">${item.sku}</span></div>
+              <div class="item-meta">
+                <span>Qty:</span><span class="qty-val">${item.quantity}</span>
+                ${item.quantity > 1 ? '<span style="color:#64748b;margin-left:8px;font-size:0.75rem;">scan again to remove</span>' : ''}
+              </div>
             </div>
           </div>
           <div class="item-right">
-            <div class="quantity-controls">
-              <button class="btn-qty btn-minus" data-sku="${item.sku}"><i class="fa-solid fa-minus"></i></button>
-              <span class="qty-val">${item.quantity}</span>
-              <button class="btn-qty btn-plus" data-sku="${item.sku}"><i class="fa-solid fa-plus"></i></button>
-            </div>
             <div class="item-pricing">
               <span class="item-subtotal-val">${CartStateModule.formatCurrency(subtotal)}</span>
               <span class="item-unit-price">${CartStateModule.formatCurrency(item.price)} ea</span>
@@ -370,18 +334,6 @@ class UIController {
           </div>
         </div>`;
     }).join('');
-    this.cartItemsContainer.querySelectorAll('.btn-minus').forEach(btn => {
-      btn.addEventListener('click', e => {
-        this.cartModule.removeItem(e.currentTarget.getAttribute('data-sku'));
-      });
-    });
-    this.cartItemsContainer.querySelectorAll('.btn-plus').forEach(btn => {
-      btn.addEventListener('click', e => {
-        const sku = e.currentTarget.getAttribute('data-sku');
-        const item = this.cartModule.items.find(i => i.sku === sku);
-        if (item) this.cartModule.addItem(item);
-      });
-    });
   }
   highlightItemCard(sku, animationClass) {
     const card = document.getElementById(`card-${sku}`);
@@ -408,52 +360,36 @@ class UIController {
   }
   updateCheckoutButtonState(isDocked, hasItems) {
     if (!this.btnCheckout) return;
-    if (isDocked && hasItems) {
+    // New flow: Done Shopping is enabled whenever there are items,
+    // regardless of docking state
+    if (hasItems) {
       this.btnCheckout.disabled = false;
       this.btnCheckout.className = 'btn btn-primary btn-block btn-lg btn-glow';
-      if (this.checkoutBtnIcon) this.checkoutBtnIcon.className = 'fa-solid fa-credit-card';
-      if (this.checkoutBtnText) this.checkoutBtnText.textContent = 'Proceed to Pay';
+      if (this.checkoutBtnIcon) this.checkoutBtnIcon.className = 'fa-solid fa-bag-shopping';
+      if (this.checkoutBtnText) this.checkoutBtnText.textContent = 'Done Shopping';
       if (this.checkoutTooltip) this.checkoutTooltip.classList.add('hidden');
     } else {
       this.btnCheckout.disabled = true;
       this.btnCheckout.className = 'btn btn-primary btn-block btn-lg btn-locked';
       if (this.checkoutBtnIcon) this.checkoutBtnIcon.className = 'fa-solid fa-lock';
-      if (this.checkoutBtnText) this.checkoutBtnText.textContent = hasItems ? 'Return Cart to Base Station to Pay' : 'Cart is Empty';
+      if (this.checkoutBtnText) this.checkoutBtnText.textContent = 'Cart is Empty';
       if (this.checkoutTooltip) {
         this.checkoutTooltip.classList.remove('hidden');
-        this.checkoutTooltip.innerHTML = hasItems
-          ? '<i class="fa-solid fa-triangle-exclamation"></i> Return cart to the base station to enable payment.'
-          : '<i class="fa-solid fa-info-circle"></i> Add items using RFID scanner to proceed.';
+        this.checkoutTooltip.innerHTML = '<i class="fa-solid fa-info-circle"></i> Add items using RFID scanner to proceed.';
       }
     }
   }
-  showCheckoutWarning(list) {
-    const modal = document.getElementById('modal-checkout-warning');
-    const countEl = document.getElementById('cw-count');
-    const listEl = document.getElementById('cw-list');
-    const cancelBtn = document.getElementById('cw-cancel');
-    const confirmBtn = document.getElementById('cw-confirm');
-
-    if (!modal) return;
-
-    const unchecked = list.items.filter(i => !i.isScanned);
-    countEl.textContent = unchecked.length;
-    listEl.innerHTML = unchecked.map(i => `<div>${i.name} ×${i.quantity}</div>`).join('');
-
-    modal.classList.add('show');
-
-    const cleanup = () => modal.classList.remove('show');
-
-    const newCancel = cancelBtn.cloneNode(true);
-    const newConfirm = confirmBtn.cloneNode(true);
-    cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
-    confirmBtn.parentNode.replaceChild(newConfirm, confirmBtn);
-
-    newCancel.addEventListener('click', cleanup);
-    newConfirm.addEventListener('click', () => {
-      cleanup();
-      this.bus.emit('checkout:open_modal');
-    });
+  renderWatcherBanner() {
+    if (!this.watcherBanner || !this.watcherBannerItems) return;
+    const requests = this.cartModule.removalRequests;
+    if (!requests || requests.length === 0) {
+      this.watcherBanner.classList.add('hidden');
+      return;
+    }
+    this.watcherBanner.classList.remove('hidden');
+    this.watcherBannerItems.innerHTML = requests
+      .map(r => `<span>${r.name}</span>`)
+      .join('');
   }
   showToast(message, type = 'info') {
     if (!this.toastContainer) return;
@@ -544,7 +480,148 @@ class ShoppingListProgressModule {
 
 
 // ==========================================================================
-// 6. CheckoutModule
+// 6. ReviewModule — Done Shopping → Review → Confirm & Pay
+// ==========================================================================
+class ReviewModule {
+  constructor(bus, cartModule, ui) {
+    this.bus = bus;
+    this.cartModule = cartModule;
+    this.ui = ui;
+    this.initDOM();
+    this.bindEvents();
+  }
+  initDOM() {
+    this.reviewModal = document.getElementById('modal-review');
+    this.dockWaitModal = document.getElementById('modal-dock-wait');
+    this.reviewItems = document.getElementById('review-items');
+    this.reviewItemsTitle = document.getElementById('review-items-title');
+    this.reviewTotal = document.getElementById('review-total');
+    this.reviewRemovals = document.getElementById('review-removals');
+    this.reviewRemovalsSection = document.getElementById('review-removals-section');
+    this.btnReviewBack = document.getElementById('btn-review-back');
+    this.btnReviewConfirm = document.getElementById('btn-review-confirm');
+    this.btnDockWaitCancel = document.getElementById('btn-dock-wait-cancel');
+  }
+  bindEvents() {
+    this.bus.on('review:open', () => this.openReview());
+
+    if (this.btnReviewBack) {
+      this.btnReviewBack.addEventListener('click', () => {
+        this.reviewModal.classList.remove('show');
+      });
+    }
+    if (this.btnReviewConfirm) {
+      this.btnReviewConfirm.addEventListener('click', () => this.confirmAndPay());
+    }
+    if (this.btnDockWaitCancel) {
+      this.btnDockWaitCancel.addEventListener('click', () => this.cancelDockWait());
+    }
+  }
+  openReview() {
+    const items = this.cartModule.items;
+    const removalRequests = this.cartModule.removalRequests;
+
+    // Items list
+    this.reviewItemsTitle.textContent = `Items (${items.length})`;
+    this.reviewItems.innerHTML = items.map(item => `
+      <div class="review-item">
+        <span class="review-item-name">${item.quantity}× ${item.name}</span>
+        <span class="review-item-price">${CartStateModule.formatCurrency(item.price * item.quantity)}</span>
+      </div>
+    `).join('');
+
+    // Removal requests
+    if (removalRequests && removalRequests.length > 0) {
+      this.reviewRemovalsSection.style.display = 'block';
+      this.reviewRemovals.innerHTML = removalRequests.map(r => `
+        <div class="review-removal-item">${r.name}</div>
+      `).join('');
+    } else {
+      this.reviewRemovalsSection.style.display = 'none';
+    }
+
+    // Total
+    this.reviewTotal.textContent = CartStateModule.formatCurrency(this.cartModule.getTotalAmount());
+
+    this.reviewModal.classList.add('show');
+  }
+  async confirmAndPay() {
+    if (!this.cartModule.cartId) return;
+
+    this.btnReviewConfirm.disabled = true;
+    this.btnReviewConfirm.textContent = 'Please wait…';
+
+    try {
+      const res = await fetch(`${window.API_URL}/api/cart/confirm-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ cart_id: this.cartModule.cartId })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        this.ui.showToast(data.error || 'Could not confirm payment', 'error');
+        this.btnReviewConfirm.disabled = false;
+        this.btnReviewConfirm.textContent = 'Confirm & Pay';
+        return;
+      }
+
+      // Close review, open dock-wait
+      this.reviewModal.classList.remove('show');
+      this.dockWaitModal.classList.add('show');
+
+    } catch (err) {
+      console.error('[confirm-payment] error:', err);
+      this.ui.showToast('Network error', 'error');
+    } finally {
+      this.btnReviewConfirm.disabled = false;
+      this.btnReviewConfirm.textContent = 'Confirm & Pay';
+    }
+  }
+  async cancelDockWait() {
+    if (!this.cartModule.cartId) return;
+
+    this.btnDockWaitCancel.disabled = true;
+    this.btnDockWaitCancel.textContent = 'Cancelling…';
+
+    try {
+      const res = await fetch(`${window.API_URL}/api/cart/cancel-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ cart_id: this.cartModule.cartId })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        this.ui.showToast(data.error || 'Could not cancel', 'error');
+        return;
+      }
+
+      this.dockWaitModal.classList.remove('show');
+      this.ui.showToast('You can continue shopping', 'info');
+
+    } catch (err) {
+      console.error('[cancel-payment] error:', err);
+      this.ui.showToast('Network error', 'error');
+    } finally {
+      this.btnDockWaitCancel.disabled = false;
+      this.btnDockWaitCancel.textContent = 'Cancel and continue shopping';
+    }
+  }
+  // Called by the app when docking is detected and we were waiting
+  onDocked() {
+    if (this.dockWaitModal.classList.contains('show')) {
+      this.dockWaitModal.classList.remove('show');
+      this.bus.emit('checkout:open_modal');
+    }
+  }
+}
+
+
+// ==========================================================================
+// 7. CheckoutModule
 // ==========================================================================
 class CheckoutModule {
   constructor(bus, cartModule, ui) {
@@ -739,7 +816,7 @@ class CheckoutModule {
 
 
 // ==========================================================================
-// 7. MockLiveFeedModule (Dev panel — products from DB)
+// 8. MockLiveFeedModule (Dev panel — products from DB)
 // ==========================================================================
 class MockLiveFeedModule {
   constructor(bus, cartModule) {
@@ -786,7 +863,7 @@ class MockLiveFeedModule {
       }
       this.products = data.products;
       this.simItemsButtons.innerHTML = data.products.map(p => `
-        <button class="sim-add-btn" data-rfid="${p.rfidTag}" data-name="${p.name}">
+        <button class="sim-add-btn" data-rfid="${p.rfidTag || ''}" data-name="${p.name}">
           + ${p.name}<br><span style="color:#94a3b8;font-size:0.7rem;">R${p.priceRands}</span>
         </button>
       `).join('');
@@ -794,6 +871,10 @@ class MockLiveFeedModule {
         btn.addEventListener('click', async (e) => {
           const rfid = e.currentTarget.getAttribute('data-rfid');
           const name = e.currentTarget.getAttribute('data-name');
+          if (!rfid) {
+            this.bus.emit('ui:toast', { message: 'Product has no tag', type: 'error' });
+            return;
+          }
           await this.scanItem(rfid, name);
         });
       });
@@ -916,7 +997,7 @@ class MockLiveFeedModule {
 
 
 // ==========================================================================
-// 8. Auth Module
+// 9. Auth Module
 // ==========================================================================
 class AuthModule {
   constructor(bus) {
@@ -995,7 +1076,7 @@ class AuthModule {
 
 
 // ==========================================================================
-// 9. App Initialization
+// 10. App Initialization
 // ==========================================================================
 document.addEventListener('DOMContentLoaded', () => {
   const isLocalhost = window.location.hostname === 'localhost';
@@ -1007,33 +1088,28 @@ document.addEventListener('DOMContentLoaded', () => {
   const qrScanner = new QRScannerModule(appBus);
   const uiController = new UIController(appBus, cartModule);
   const shoppingListProgress = new ShoppingListProgressModule(appBus, cartModule);
+  const reviewModule = new ReviewModule(appBus, cartModule, uiController);
   const checkoutModule = new CheckoutModule(appBus, cartModule, uiController);
   const mockFeed = new MockLiveFeedModule(appBus, cartModule);
   const authModule = new AuthModule(appBus);
 
   // =====================================================================
-  // AUTO-PAIR FROM URL
-  // Reads ?cart_id=... from the URL. Persists to localStorage so that
-  // after a login redirect (which may strip the query string), we can
-  // still restore it and complete pairing.
+  // AUTO-PAIR FROM URL / HASH
   // =====================================================================
   const urlParams = new URLSearchParams(window.location.search);
-let urlCartId = urlParams.get('cart_id');
+  let urlCartId = urlParams.get('cart_id');
 
-// Fallback: read from URL hash (#cart=cart_004) if the query param is missing
-// This handles cases where the phone's QR scanner strips query strings.
-if (!urlCartId && window.location.hash) {
-  const hash = window.location.hash.substring(1); // strip leading '#'
-  const hashParams = new URLSearchParams(hash);
-  urlCartId = hashParams.get('cart');
-  if (urlCartId) {
-    console.log('[AutoPair] Cart ID from hash:', urlCartId);
+  if (!urlCartId && window.location.hash) {
+    const hash = window.location.hash.substring(1);
+    const hashParams = new URLSearchParams(hash);
+    urlCartId = hashParams.get('cart');
+    if (urlCartId) {
+      console.log('[AutoPair] Cart ID from hash:', urlCartId);
+    }
   }
-}
 
   if (urlCartId) {
     console.log('[AutoPair] Cart ID from URL:', urlCartId);
-document.title = 'AutoPair: ' + (urlCartId || 'NONE');
     localStorage.setItem('pendingCartId', urlCartId);
   } else {
     const saved = localStorage.getItem('pendingCartId');
@@ -1050,8 +1126,7 @@ document.title = 'AutoPair: ' + (urlCartId || 'NONE');
     setTimeout(() => {
       if (authModule.customer) {
         console.log('[AutoPair] Logged in — pairing now:', urlCartId);
-      document.title = 'Pairing: ' + urlCartId;
-      appBus.emit('qr:scanned', { cartId: urlCartId });
+        appBus.emit('qr:scanned', { cartId: urlCartId });
         localStorage.removeItem('pendingCartId');
       } else {
         console.log('[AutoPair] Waiting for login before pairing:', urlCartId);
@@ -1088,23 +1163,29 @@ document.title = 'AutoPair: ' + (urlCartId || 'NONE');
     }
   });
 
-  // Clear pending cart when pairing completes
   appBus.on('cart:paired', () => {
     localStorage.removeItem('pendingCartId');
   });
 
+  // =====================================================================
+  // SERVER SESSION POLLING
+  // =====================================================================
   let lastServerSignature = '';
+  let lastDockedState = false;
+
   function applyServerSession(session) {
     if (!session) {
       if (cartModule.items.length > 0 || cartModule.isDockedAtStation) {
         cartModule.items = [];
+        cartModule.removalRequests = [];
         cartModule.setDockedState(false);
         lastServerSignature = '';
         appBus.emit('cart:updated', cartModule.getStateSummary());
       }
       return;
     }
-    cartModule.setDockedState(Boolean(session.isDocked));
+
+    // Update items
     const serverItems = (session.items || []).map(item => ({
       sku: item.sku,
       name: item.name,
@@ -1117,8 +1198,32 @@ document.title = 'AutoPair: ' + (urlCartId || 'NONE');
       lastServerSignature = sig;
       cartModule.items = serverItems;
     }
+
+    // Update removal requests
+    const requests = (session.items || [])
+      .filter(i => i.removeRequestedAt)
+      .map(i => ({
+        id: i.id,
+        sku: i.sku,
+        name: i.name
+      }));
+    cartModule.removalRequests = requests;
+
+    // Update docked state
+    const nowDocked = Boolean(session.isDocked);
+    const wasDocked = lastDockedState;
+    lastDockedState = nowDocked;
+    cartModule.setDockedState(nowDocked);
+
+    // If we just transitioned to docked and there's a dock-wait modal open,
+    // swap to payment method modal
+    if (nowDocked && !wasDocked) {
+      reviewModule.onDocked();
+    }
+
     appBus.emit('cart:updated', cartModule.getStateSummary());
   }
+
   async function pollCart() {
     if (cartModule.cartId) {
       try {
@@ -1140,6 +1245,9 @@ document.title = 'AutoPair: ' + (urlCartId || 'NONE');
   appBus.on('cart:unpaired', () => { lastServerSignature = ''; });
   pollCart();
 
+  // =====================================================================
+  // PAYSTACK CALLBACK
+  // =====================================================================
   const paid = urlParams.get('paid');
   const paidCartId = urlParams.get('cart_id');
   const paidReference = urlParams.get('reference');

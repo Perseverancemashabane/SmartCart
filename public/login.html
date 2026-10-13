@@ -33,6 +33,45 @@
       color: #94a3b8; transition: all 0.2s;
     }
     .tab.active { background: #3b82f6; color: white; }
+
+    /* Role selector */
+    .role-section { margin-bottom: 20px; }
+    .role-section.hidden { display: none; }
+    .role-label {
+      display: block;
+      font-size: 0.85rem;
+      color: #cbd5e1;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    .role-toggle {
+      display: flex;
+      gap: 8px;
+      background: #0f172a;
+      padding: 4px;
+      border-radius: 10px;
+    }
+    .role-option {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: #94a3b8;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .role-option.active {
+      background: #10b981;
+      color: white;
+    }
+    .role-option i { font-size: 0.95rem; }
+
     .field { margin-bottom: 16px; }
     label { display: block; font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px; font-weight: 500; }
     input {
@@ -97,6 +136,19 @@
     </div>
 
     <form id="auth-form" autocomplete="off">
+      <!-- Role selector (Login tab only) -->
+      <div class="role-section" id="role-section">
+        <label class="role-label">Who are you?</label>
+        <div class="role-toggle">
+          <div class="role-option active" data-role="shopper">
+            <i>🛒</i> Shopper
+          </div>
+          <div class="role-option" data-role="watcher">
+            <i>👀</i> Watcher
+          </div>
+        </div>
+      </div>
+
       <div class="field">
         <label for="phone">Phone Number</label>
         <input
@@ -169,6 +221,7 @@
   <script>
     const API = window.location.origin;
     let mode = 'login';
+    let role = 'shopper';
 
     const tabs = document.querySelectorAll('.tab');
     const form = document.getElementById('auth-form');
@@ -178,6 +231,8 @@
     const nameInput = document.getElementById('name');
     const emailField = document.getElementById('email-field');
     const nameField = document.getElementById('name-field');
+    const roleSection = document.getElementById('role-section');
+    const roleOptions = document.querySelectorAll('.role-option');
     const submitBtn = document.getElementById('submit-btn');
     const errorMsg = document.getElementById('error-msg');
     const successMsg = document.getElementById('success-msg');
@@ -199,14 +254,24 @@
       clearFields();
     }
 
+    // Tab switching
     tabs.forEach(tab => {
       tab.addEventListener('click', () => {
         mode = tab.dataset.tab;
         tabs.forEach(t => t.classList.toggle('active', t === tab));
         emailField.style.display = mode === 'register' ? 'block' : 'none';
         nameField.style.display = mode === 'register' ? 'block' : 'none';
+        roleSection.classList.toggle('hidden', mode === 'register');
         submitBtn.textContent = mode === 'register' ? 'Create Account' : 'Log In';
         clearFields();
+      });
+    });
+
+    // Role switching
+    roleOptions.forEach(opt => {
+      opt.addEventListener('click', () => {
+        role = opt.dataset.role;
+        roleOptions.forEach(o => o.classList.toggle('active', o === opt));
       });
     });
 
@@ -240,8 +305,15 @@
           return;
         }
 
+        // Register always goes to shopper flow
+        // Login goes to role-specific page
+        let dest = '/app.html';
+        if (mode === 'login' && role === 'watcher') {
+          dest = '/watch.html';
+        }
+
         showSuccess(mode === 'register' ? 'Account created! Redirecting…' : 'Logged in! Redirecting…');
-        setTimeout(() => { window.location.href = '/app.html'; }, 800);
+        setTimeout(() => { window.location.href = dest; }, 800);
       } catch (err) {
         showError('Network error. Please try again.');
       } finally {

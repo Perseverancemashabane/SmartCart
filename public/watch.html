@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>SmartCart — Watcher</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      min-height: 100vh;
+      padding-bottom: 40px;
+    }
+    .header {
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 16px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+    .brand-icon {
+      width: 36px;
+      height: 36px;
+      background: #3b82f6;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+    }
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: rgba(74,222,128,0.15);
+      color: #4ade80;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .live-badge.offline {
+      background: rgba(248,113,113,0.15);
+      color: #f87171;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      background: #4ade80;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.9); }
+    }
+    .cart-badge {
+      padding: 6px 12px;
+      background: rgba(59,130,246,0.15);
+      border: 1px solid rgba(59,130,246,0.3);
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #93c5fd;
+    }
+
+    /* Shopper info bar */
+    .shopper-bar {
+      background: #0f172a;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid #334155;
+    }
+    .shopper-name {
+      font-size: 0.9rem;
+      color: #cbd5e1;
+    }
+    .shopper-name strong { color: #f8fafc; font-weight: 600; }
+    .total-display {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .total-display .currency {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      font-weight: 500;
+      margin-right: 4px;
+    }
+
+    .container {
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .section {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      gap: 12px;
+    }
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+    .section-title .icon {
+      font-size: 1.2rem;
+    }
+    .count-badge {
+      padding: 3px 10px;
+      background: #334155;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      color: #cbd5e1;
+      font-weight: 600;
+    }
+
+    /* Item cards */
+    .item-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .item-card {
+      background: #0f172a;
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border: 1px solid #1e293b;
+      transition: all 0.2s;
+    }
+    .item-card.confirmed {
+      border-color: rgba(74,222,128,0.4);
+      background: rgba(74,222,128,0.05);
+    }
+    .item-card.remove-requested {
+      border-color: rgba(248,113,113,0.4);
+      background: rgba(248,113,113,0.05);
+    }
+    .item-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .item-name {
+      font-weight: 600;
+      color: #f8fafc;
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .item-meta {
+      font-size: 0.78rem;
+      color: #94a3b8;
+    }
+    .item-meta .price {
+      color: #4ade80;
+      font-weight: 600;
+    }
+    .item-actions {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .btn-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+    .btn-icon:hover {
+      transform: scale(1.05);
+    }
+    .btn-icon.confirm.active {
+      background: #10b981;
+      border-color: #10b981;
+      color: white;
+    }
+    .btn-icon.remove.active {
+      background: #ef4444;
+      border-color: #ef4444;
+      color: white;
+    }
+    .btn-icon:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Shopping list rows */
+    .list-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: #0f172a;
+      border-radius: 10px;
+      font-size: 0.9rem;
+    }
+    .list-row .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #64748b;
+      flex-shrink: 0;
+    }
+    .list-row.scanned .status-dot { background: #10b981; }
+    .list-row.scanned .list-name {
+      text-decoration: line-through;
+      color: #64748b;
+    }
+    .list-name { flex: 1; color: #e2e8f0; }
+    .list-qty {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      background: #1e293b;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+    .list-remove {
+      background: none;
+      border: none;
+      color: #64748b;
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 4px 6px;
+      border-radius: 6px;
+    }
+    .list-remove:hover { color: #ef4444; background: rgba(239,68,68,0.1); }
+
+    /* Add item form */
+    .add-item-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .add-item-row input {
+      flex: 1;
+      padding: 10px 12px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      color: #f8fafc;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    .add-item-row input:focus { border-color: #3b82f6; }
+    .add-item-row button {
+      padding: 10px 16px;
+      background: #3b82f6;
+      border: none;
+      border-radius: 10px;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+    .add-item-row button:hover { background: #2563eb; }
+    .add-item-row button:disabled {
+      background: #475569;
+      cursor: not-allowed;
+    }
+
+    /* Empty state */
+    .empty {
+      text-align: center;
+      padding: 30px 20px;
+      color: #64748b;
+      font-size: 0.9rem;
+    }
+    .empty-icon {
+      font-size: 2.5rem;
+      margin-bottom: 8px;
+      opacity: 0.5;
+    }
+
+    /* Toast */
+    .toast-container {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 100;
+      pointer-events: none;
+    }
+    .toast {
+      padding: 10px 18px;
+      background: #1e293b;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      color: #f8fafc;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+      border-left: 3px solid #3b82f6;
+      animation: slideUp 0.3s ease-out;
+    }
+    .toast.success { border-left-color: #10b981; }
+    .toast.error { border-left-color: #ef4444; }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 60px 20px;
+      color: #64748b;
+    }
+    .loading-spinner {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 3px solid #334155;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* No cart state */
+    .no-cart {
+      text-align: center;
+      padding: 60px 20px;
+    }
+    .no-cart-icon {
+      font-size: 3rem;
+      margin-bottom: 12px;
+      opacity: 0.4;
+    }
+    .no-cart h2 {
+      font-size: 1.2rem;
+      margin-bottom: 8px;
+      color: #cbd5e1;
+    }
+    .no-cart p {
+      color: #64748b;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    .logout-btn {
+      padding: 6px 12px;
+      background: rgba(248,113,113,0.15);
+      color: #f87171;
+      border: 1px solid rgba(248,113,113,0.3);
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .logout-btn:hover { background: rgba(248,113,113,0.25); }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-top">
+      <div class="brand">
+        <div class="brand-icon">👀</div>
+        <span>Watcher</span>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <div class="live-badge" id="live-badge">
+          <span class="pulse-dot"></span>
+          <span id="live-text">Live</span>
+        </div>
+        <div class="cart-badge" id="cart-badge" style="display: none;">Cart #—</div>
+        <button class="logout-btn" id="logout-btn">Logout</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="shopper-bar" id="shopper-bar" style="display: none;">
+    <div class="shopper-name">
+      Shopping: <strong id="shopper-name">—</strong>
+    </div>
+    <div class="total-display">
+      <span class="currency">R</span><span id="total-amount">0.00</span>
+    </div>
+  </div>
+
+  <div class="container" id="main-container">
+    <!-- Loaded via JS -->
+    <div class="loading" id="loading-state">
+      <div class="loading-spinner"></div>
+      <div>Loading cart...</div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toast-container"></div>
+
+  <script>
+    // ============================================================
+    // Auth check + redirect if not logged in
+    // ============================================================
+    const API = window.location.origin;
+
+    async function checkAuth() {
+      try {
+        const res = await fetch(`${API}/api/auth/me`, { credentials: 'include' });
+        const data = await res.json();
+        if (!data.authenticated || !data.customer) {
+          window.location.href = '/login.html';
+          return null;
+        }
+        return data.customer;
+      } catch (err) {
+        window.location.href = '/login.html';
+        return null;
+      }
+    }
+
+    // ============================================================
+    // State
+    // ============================================================
+    let currentCart = null;
+    let currentList = null;
+    let currentCustomer = null;
+    let lastPollError = false;
+
+    // ============================================================
+    // Toast
+    // ============================================================
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+      }, 2500);
+    }
+
+    // ============================================================
+    // Polling
+    // ============================================================
+    async function pollState() {
+      try {
+        const res = await fetch(`${API}/api/watcher/state`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: '{}',
+        });
+
+        if (res.status === 401) {
+          window.location.href = '/login.html';
+          return;
+        }
+
+        const data = await res.json();
+        if (!data.success) return;
+
+        lastPollError = false;
+        updateLiveBadge();
+        currentCart = data.cart;
+        currentList = data.shoppingList;
+        render();
+
+      } catch (err) {
+        lastPollError = true;
+        updateLiveBadge();
+      }
+    }
+
+    function updateLiveBadge() {
+      const badge = document.getElementById('live-badge');
+      const text = document.getElementById('live-text');
+      if (lastPollError) {
+        badge.classList.add('offline');
+        text.textContent = 'Offline';
+      } else {
+        badge.classList.remove('offline');
+        text.textContent = 'Live';
+      }
+    }
+
+    // ============================================================
+    // Render
+    // ============================================================
+    function render() {
+      const container = document.getElementById('main-container');
+
+      // No cart yet
+      if (!currentCart) {
+        document.getElementById('shopper-bar').style.display = 'none';
+        document.getElementById('cart-badge').style.display = 'none';
+        container.innerHTML = `
+          <div class="no-cart">
+            <div class="no-cart-icon">🛒</div>
+            <h2>No active cart</h2>
+            <p>Waiting for the shopper to pair a cart.<br>This page updates automatically.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Show shopper bar
+      document.getElementById('shopper-bar').style.display = 'flex';
+      document.getElementById('cart-badge').style.display = 'inline-block';
+      document.getElementById('cart-badge').textContent = `Cart #${currentCart.cartId.replace(/^cart_/i, '')}`;
+      document.getElementById('shopper-name').textContent = currentCustomer?.name || currentCustomer?.phoneNumber || '—';
+      const totalRands = ((currentCart.totalCents || 0) / 100).toFixed(2);
+      document.getElementById('total-amount').textContent = totalRands;
+
+      // Cart items section
+      let html = '';
+
+      // Scanned items
+      html += `
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">
+              <span class="icon">📦</span>
+              <span>Scanned Items</span>
+            </div>
+            <span class="count-badge">${currentCart.items.length} item${currentCart.items.length === 1 ? '' : 's'}</span>
+          </div>
+      `;
+
+      if (currentCart.items.length === 0) {
+        html += `
+          <div class="empty">
+            <div class="empty-icon">🛒</div>
+            <div>No items scanned yet</div>
+          </div>
+        `;
+      } else {
+        html += '<div class="item-list">';
+        currentCart.items.forEach(item => {
+          const priceRands = ((item.unitPriceCents || 0) / 100).toFixed(2);
+          const confirmed = item.confirmedByWatcher;
+          const removeReq = !!item.removeRequestedAt;
+          let cardClass = 'item-card';
+          if (removeReq) cardClass += ' remove-requested';
+          else if (confirmed) cardClass += ' confirmed';
+
+          html += `
+            <div class="${cardClass}" data-item-id="${item.id}">
+              <div class="item-info">
+                <div class="item-name">${escapeHtml(item.name)}</div>
+                <div class="item-meta">
+                  ${item.quantity}x · <span class="price">R${priceRands}</span>
+                </div>
+              </div>
+              <div class="item-actions">
+                <button class="btn-icon confirm ${confirmed ? 'active' : ''}"
+                        data-action="confirm"
+                        data-item-id="${item.id}"
+                        title="Mark as confirmed">
+                  ✓
+                </button>
+                <button class="btn-icon remove ${removeReq ? 'active' : ''}"
+                        data-action="request-remove"
+                        data-item-id="${item.id}"
+                        title="${removeReq ? 'Remove request sent' : 'Request removal'}">
+                  ✗
+                </button>
+              </div>
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+
+      // Shopping list section
+      html += `
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">
+              <span class="icon">📝</span>
+              <span>Shopping List</span>
+            </div>
+            ${currentList ? `<span class="count-badge">${currentList.progress.found}/${currentList.progress.total}</span>` : ''}
+          </div>
+      `;
+
+      if (!currentList || currentList.items.length === 0) {
+        html += `
+          <div class="empty">
+            <div class="empty-icon">📝</div>
+            <div>No items on the list</div>
+            <div style="font-size: 0.8rem; margin-top: 4px;">Add items below to share with the shopper</div>
+          </div>
+        `;
+      } else {
+        html += '<div class="item-list">';
+        currentList.items.forEach(item => {
+          html += `
+            <div class="list-row ${item.isScanned ? 'scanned' : ''}" data-list-item-id="${item.id}">
+              <div class="status-dot"></div>
+              <div class="list-name">${escapeHtml(item.name)}</div>
+              <div class="list-qty">x${item.quantity}</div>
+              <button class="list-remove" data-item-id="${item.id}" title="Remove from list">🗑</button>
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      // Add item form
+      html += `
+        <div class="add-item-row">
+          <input type="text" id="new-item-input" placeholder="Add item…" maxlength="100" />
+          <button id="add-item-btn">Add</button>
+        </div>
+      `;
+      html += '</div>';
+
+      container.innerHTML = html;
+
+      // Wire up buttons
+      container.querySelectorAll('.btn-icon').forEach(btn => {
+        btn.addEventListener('click', () => handleMarkItem(btn));
+      });
+      container.querySelectorAll('.list-remove').forEach(btn => {
+        btn.addEventListener('click', () => handleRemoveListItem(btn));
+      });
+      const addBtn = document.getElementById('add-item-btn');
+      const addInput = document.getElementById('new-item-input');
+      if (addBtn && addInput) {
+        addBtn.addEventListener('click', () => handleAddListItem(addInput));
+        addInput.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            handleAddListItem(addInput);
+          }
+        });
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // ============================================================
+    // Actions
+    // ============================================================
+    async function handleMarkItem(btn) {
+      const action = btn.dataset.action;
+      const itemId = parseInt(btn.dataset.itemId, 10);
+      if (!currentCart) return;
+
+      // Toggle: if already active, we're clearing
+      let effectiveAction = action;
+      if (action === 'confirm' && btn.classList.contains('active')) {
+        // Currently we don't support un-confirm, so do nothing
+        return;
+      }
+      if (action === 'request-remove' && btn.classList.contains('active')) {
+        effectiveAction = 'clear-remove';
+      }
+
+      btn.disabled = true;
+      try {
+        const res = await fetch(`${API}/api/watcher/mark-item`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            cart_id: currentCart.cartId,
+            item_id: itemId,
+            action: effectiveAction,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || 'Action failed', 'error');
+          return;
+        }
+        if (effectiveAction === 'confirm') showToast('Item confirmed', 'success');
+        if (effectiveAction === 'request-remove') showToast('Removal requested', 'success');
+        if (effectiveAction === 'clear-remove') showToast('Removal request cleared');
+        pollState();
+      } catch (err) {
+        showToast('Network error', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function handleAddListItem(input) {
+      const val = input.value.trim();
+      if (!val) return;
+
+      const btn = document.getElementById('add-item-btn');
+      btn.disabled = true;
+      try {
+        const res = await fetch(`${API}/api/watcher/list/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ name: val, quantity: 1 }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || 'Could not add item', 'error');
+          return;
+        }
+        showToast(`Added: ${val}`, 'success');
+        input.value = '';
+        pollState();
+      } catch (err) {
+        showToast('Network error', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function handleRemoveListItem(btn) {
+      const itemId = parseInt(btn.dataset.itemId, 10);
+      if (!itemId) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`${API}/api/watcher/list/remove`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ item_id: itemId }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || 'Could not remove', 'error');
+          return;
+        }
+        showToast('Item removed from list');
+        pollState();
+      } catch (err) {
+        showToast('Network error', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ============================================================
+    // Logout
+    // ============================================================
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      try {
+        await fetch(`${API}/api/auth/logout`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+      } catch (e) { /* ignore */ }
+      window.location.href = '/login.html';
+    });
+
+    // ============================================================
+    // Bootstrap
+    // ============================================================
+    (async () => {
+      currentCustomer = await checkAuth();
+      if (!currentCustomer) return;
+
+      await pollState();
+      setInterval(pollState, 2000);
+    })();
+  </script>
+</body>
+</html>

@@ -8,7 +8,7 @@ datasource db {
 }
 
 // ============================================================
-//  STAFF (NEW — for anti-theft PIN + admin access)
+//  STAFF — for anti-theft PIN + admin access
 // ============================================================
 model Staff {
   id        Int       @id @default(autoincrement())
@@ -21,16 +21,18 @@ model Staff {
 }
 
 // ============================================================
-//  PRODUCT (unchanged)
+//  PRODUCT
 // ============================================================
 model Product {
   id            Int                @id @default(autoincrement())
-  rfidTagId     String             @unique @map("rfid_tag_id") @db.VarChar(50)
   name          String             @db.VarChar(200)
   priceCents    Int                @map("price_cents")
   stockQuantity Int?               @default(0) @map("stock_quantity")
+  // Legacy — kept during migration, will be dropped later
+  rfidTagId     String?            @unique @map("rfid_tag_id") @db.VarChar(50)
   createdAt     DateTime?          @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt     DateTime?          @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  tags          ProductTag[]
   cartItems     CartItem[]
   shoppingItems ShoppingListItem[]
 
@@ -38,7 +40,21 @@ model Product {
 }
 
 // ============================================================
-//  CART (unchanged)
+//  PRODUCT TAG — multiple tags per product
+// ============================================================
+model ProductTag {
+  id         Int      @id @default(autoincrement())
+  rfidTagId  String   @unique @map("rfid_tag_id") @db.VarChar(50)
+  productId  Int      @map("product_id")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_tags")
+}
+
+// ============================================================
+//  CART
 // ============================================================
 model Cart {
   id             String        @id @db.VarChar(50)
@@ -52,7 +68,7 @@ model Cart {
 }
 
 // ============================================================
-//  CART SESSION (added 4 premium fields)
+//  CART SESSION — with premium fields
 // ============================================================
 model CartSession {
   id            Int           @id @default(autoincrement())
@@ -66,7 +82,7 @@ model CartSession {
   createdAt     DateTime?     @default(now()) @map("created_at") @db.Timestamp(6)
   closedAt      DateTime?     @map("closed_at") @db.Timestamp(6)
 
-  // ⭐ NEW premium fields
+  // Premium fields
   paymentStatus      String    @default("unpaid") @map("payment_status") @db.VarChar(20)
   paymentRequestedAt DateTime? @map("payment_requested_at") @db.Timestamp(6)
   cartAbandoned      Boolean   @default(false) @map("cart_abandoned")
@@ -81,7 +97,7 @@ model CartSession {
 }
 
 // ============================================================
-//  CART ITEM (added 2 premium fields)
+//  CART ITEM
 // ============================================================
 model CartItem {
   id             Int         @id @default(autoincrement())
@@ -92,7 +108,7 @@ model CartItem {
   subtotalCents  Int         @map("subtotal_cents")
   created_at     DateTime?   @default(now()) @db.Timestamp(6)
 
-  // ⭐ NEW premium fields
+  // Premium fields
   confirmedByWatcher Boolean   @default(false) @map("confirmed_by_watcher")
   removeRequestedAt  DateTime? @map("remove_requested_at") @db.Timestamp(6)
 
@@ -104,7 +120,7 @@ model CartItem {
 }
 
 // ============================================================
-//  TRANSACTION (unchanged)
+//  TRANSACTION
 // ============================================================
 model Transaction {
   id                    Int         @id @default(autoincrement())
@@ -120,7 +136,7 @@ model Transaction {
 }
 
 // ============================================================
-//  LEGACY items (unchanged — used by /api/scan)
+//  LEGACY items (used by /api/scan)
 // ============================================================
 model items {
   id      Int     @id @default(autoincrement())
@@ -130,7 +146,7 @@ model items {
 }
 
 // ============================================================
-//  LEGACY scans (unchanged)
+//  LEGACY scans
 // ============================================================
 model scans {
   id         Int       @id @default(autoincrement())
@@ -141,7 +157,7 @@ model scans {
 }
 
 // ============================================================
-//  CUSTOMER (unchanged)
+//  CUSTOMER
 // ============================================================
 model Customer {
   id                   Int                 @id @default(autoincrement())
@@ -161,7 +177,7 @@ model Customer {
 }
 
 // ============================================================
-//  WALLET TRANSACTION (unchanged)
+//  WALLET TRANSACTION
 // ============================================================
 model WalletTransaction {
   id          Int      @id @default(autoincrement())
@@ -177,7 +193,7 @@ model WalletTransaction {
 }
 
 // ============================================================
-//  SHOPPING LIST (unchanged)
+//  SHOPPING LIST
 // ============================================================
 model ShoppingList {
   id          Int                @id @default(autoincrement())
@@ -194,7 +210,7 @@ model ShoppingList {
 }
 
 // ============================================================
-//  SHOPPING LIST ITEM (added 1 premium field)
+//  SHOPPING LIST ITEM — with premium field
 // ============================================================
 model ShoppingListItem {
   id         Int          @id @default(autoincrement())
@@ -206,7 +222,7 @@ model ShoppingListItem {
   scannedAt  DateTime?    @map("scanned_at") @db.Timestamp(6)
   createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamp(6)
 
-  // ⭐ NEW premium field
+  // Premium field
   removeRequestedAt DateTime? @map("remove_requested_at") @db.Timestamp(6)
 
   list       ShoppingList @relation(fields: [listId], references: [id], onDelete: Cascade)

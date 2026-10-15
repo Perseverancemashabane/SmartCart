@@ -15,7 +15,16 @@ export async function POST(request: Request) {
       where: { cartId: cart_id, isActive: true },
       include: {
         items: {
-          include: { product: true },
+          include: {
+            product: {
+              include: {
+                tags: {
+                  where: { isActive: true },
+                  orderBy: { createdAt: 'asc' },
+                },
+              },
+            },
+          },
         },
       },
     });
@@ -35,16 +44,27 @@ export async function POST(request: Request) {
         id: activeSession.id,
         isActive: activeSession.isActive,
         isDocked: activeSession.isDocked,
+        // NEW: payment-related fields the cart uses for gating
+        paymentStatus: activeSession.paymentStatus,
+        paymentRequestedAt: activeSession.paymentRequestedAt
+          ? activeSession.paymentRequestedAt.toISOString()
+          : null,
+        cartAbandoned: activeSession.cartAbandoned,
+        alarmTriggered: activeSession.alarmTriggered,
         subtotalCents: activeSession.subtotalCents,
         taxCents: activeSession.taxCents,
         totalCents: activeSession.totalCents,
         items: activeSession.items.map((item) => ({
           id: item.id,
-          sku: item.product.rfidTagId,
+          sku: item.product.id.toString(),
           name: item.product.name,
           unitPriceCents: item.unitPriceCents,
           quantity: item.quantity,
           subtotalCents: item.subtotalCents,
+          removeRequestedAt: item.removeRequestedAt
+            ? item.removeRequestedAt.toISOString()
+            : null,
+          confirmedByWatcher: item.confirmedByWatcher,
         })),
       },
     });

@@ -1,10 +1,10 @@
 /**
- * SmartCart IoT - Full Application Logic (v9)
+ * SmartCart IoT - Full Application Logic (v10)
  * Cart lifecycle + auth + wallet payment + shopping list + review flow
  *
- * v9 changes:
- *  - btn-checkout always opens review screen (no dock shortcut)
- *  - Removed auto-jump to payment when cart is docked
+ * v10 changes:
+ *  - When session disappears (paid/cancelled/anti-theft), the phone
+ *    returns to pairing view — unless the receipt modal is showing
  */
 
 // ==========================================================================
@@ -552,11 +552,8 @@ class ReviewModule {
         return;
       }
 
-      // Close review
       this.reviewModal.classList.remove('show');
 
-      // If the cart is already docked, go straight to payment modal.
-      // Otherwise, show the dock-wait modal.
       if (this.cartModule.isDockedAtStation) {
         this.bus.emit('checkout:open_modal');
       } else {
@@ -601,8 +598,6 @@ class ReviewModule {
     }
   }
   onDocked() {
-    // Called when cart becomes docked. If dock-wait modal is open,
-    // close it and open payment modal.
     if (this.dockWaitModal.classList.contains('show')) {
       this.dockWaitModal.classList.remove('show');
       this.bus.emit('checkout:open_modal');
@@ -1137,12 +1132,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function applyServerSession(session) {
     if (!session) {
-      if (cartModule.items.length > 0 || cartModule.isDockedAtStation) {
+      // Session is gone (paid, cancelled, reset, or anti-theft cancel)
+      // BUT: if the receipt modal is showing, keep it visible.
+      const receiptModal = document.getElementById('modal-receipt');
+      const receiptVisible = receiptModal && !receiptModal.classList.contains('hidden');
+
+      if (receiptVisible) {
+        // Payment just succeeded — keep receipt on screen.
+        // Do NOT unpair here; user dismisses with the button.
+        return;
+      }
+
+      // Otherwise: session is gone without payment — reset the phone
+      // back to the pairing view.
+      if (cartModule.cartId) {
         cartModule.items = [];
         cartModule.removalRequests = [];
         cartModule.setDockedState(false);
         lastServerSignature = '';
-        appBus.emit('cart:updated', cartModule.getStateSummary());
+        lastDockedState = false;
+        cartModule.unpairCart();  // → cart:unpaired → switchView('view-pairing')
       }
       return;
     }

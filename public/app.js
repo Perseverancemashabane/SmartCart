@@ -261,7 +261,7 @@ class UIController {
           this.showToast('Your cart is empty! Add items before checking out.', 'warning');
           return;
         }
-        // ALWAYS show review screen first, regardless of dock state
+        // ALWAYS show review screen first
         appBus.emit('review:open');
       });
     }
@@ -552,10 +552,11 @@ class ReviewModule {
         return;
       }
 
-      // If the cart is already docked, go straight to payment modal
-      // Otherwise show the dock-wait modal
+      // Close review
       this.reviewModal.classList.remove('show');
 
+      // If the cart is already docked, go straight to payment modal.
+      // Otherwise, show the dock-wait modal.
       if (this.cartModule.isDockedAtStation) {
         this.bus.emit('checkout:open_modal');
       } else {
@@ -600,6 +601,8 @@ class ReviewModule {
     }
   }
   onDocked() {
+    // Called when cart becomes docked. If dock-wait modal is open,
+    // close it and open payment modal.
     if (this.dockWaitModal.classList.contains('show')) {
       this.dockWaitModal.classList.remove('show');
       this.bus.emit('checkout:open_modal');
@@ -952,8 +955,6 @@ class MockLiveFeedModule {
         }
       });
     }
-    const rmBtn = document.getElementById('sim-remove-random');
-    if (rmBtn) rmBtn.addEventListener('click', () => this.cartModule.removeLastItem());
     const clrBtn = document.getElementById('sim-clear-all');
     if (clrBtn) clrBtn.addEventListener('click', () => this.cartModule.clearCart());
   }

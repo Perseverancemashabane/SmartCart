@@ -68,7 +68,7 @@ model Cart {
 }
 
 // ============================================================
-//  CART SESSION — with premium fields
+//  CART SESSION
 // ============================================================
 model CartSession {
   id            Int           @id @default(autoincrement())
@@ -210,7 +210,7 @@ model ShoppingList {
 }
 
 // ============================================================
-//  SHOPPING LIST ITEM — with premium field
+//  SHOPPING LIST ITEM
 // ============================================================
 model ShoppingListItem {
   id         Int          @id @default(autoincrement())
@@ -229,4 +229,23 @@ model ShoppingListItem {
   product    Product?     @relation(fields: [productId], references: [id])
 
   @@map("shopping_list_items")
+}
+
+// ============================================================
+//  ALERT — for anti-theft, abandoned cart, and other incidents
+// ============================================================
+model Alert {
+  id          Int       @id @default(autoincrement())
+  cartId      String    @map("cart_id") @db.VarChar(50)
+  sessionId   Int?      @map("session_id")
+  type        String    @db.VarChar(50)   // "anti_theft", "abandoned", etc.
+  reason      String?   @db.VarChar(200)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamp(6)
+  resolvedBy  String?   @map("resolved_by") @db.VarChar(100)
+  resolution  String?   @db.VarChar(50)   // "continue", "cancel"
+
+  @@index([cartId])
+  @@index([createdAt])
+  @@map("alerts")
 }

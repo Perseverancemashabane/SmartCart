@@ -1,6 +1,10 @@
 /**
- * SmartCart IoT - Full Application Logic (v8 — Done Shopping flow)
+ * SmartCart IoT - Full Application Logic (v9)
  * Cart lifecycle + auth + wallet payment + shopping list + review flow
+ *
+ * v9 changes:
+ *  - btn-checkout always opens review screen (no dock shortcut)
+ *  - Removed auto-jump to payment when cart is docked
  */
 
 // ==========================================================================
@@ -35,7 +39,7 @@ class CartStateModule {
     this.isDockedAtStation = false;
     this.paymentStatus = 'unpaid';
     this.vatRate = 0.15;
-    this.removalRequests = []; // [{ name, id, removeRequestedAt }]
+    this.removalRequests = [];
   }
   pairCart(id) {
     this.cartId = id;
@@ -53,10 +57,6 @@ class CartStateModule {
     this.paymentStatus = 'unpaid';
     this.removalRequests = [];
     this.bus.emit('cart:unpaired', { cartId: prevId });
-  }
-  removeItem(sku) {
-    // No-op — items can only be modified by scanning.
-    // Kept for API compatibility.
   }
   clearCart() {
     this.items = [];
@@ -257,17 +257,11 @@ class UIController {
 
     if (this.btnCheckout) {
       this.btnCheckout.addEventListener('click', () => {
-        // NEW: Done Shopping button
         if (this.cartModule.items.length === 0) {
           this.showToast('Your cart is empty! Add items before checking out.', 'warning');
           return;
         }
-        // If already docked (shouldn't happen with new flow, but safety):
-        if (this.cartModule.isDockedAtStation) {
-          this.bus.emit('checkout:open_modal');
-          return;
-        }
-        // Open review modal
+        // ALWAYS show review screen first, regardless of dock state
         appBus.emit('review:open');
       });
     }
@@ -310,7 +304,6 @@ class UIController {
   }
   renderItemsList(items) {
     if (!this.cartItemsContainer) return;
-    // REMOVED +/- buttons. Items can only be modified by scanning.
     this.cartItemsContainer.innerHTML = items.map(item => {
       const subtotal = item.price * item.quantity;
       const hasRemovalRequest = this.cartModule.removalRequests.some(r => r.sku === item.sku);
@@ -322,7 +315,6 @@ class UIController {
               <h4>${item.name}</h4>
               <div class="item-meta">
                 <span>Qty:</span><span class="qty-val">${item.quantity}</span>
-                ${item.quantity > 1 ? '<span style="color:#64748b;margin-left:8px;font-size:0.75rem;">scan again to remove</span>' : ''}
               </div>
             </div>
           </div>
@@ -360,8 +352,6 @@ class UIController {
   }
   updateCheckoutButtonState(isDocked, hasItems) {
     if (!this.btnCheckout) return;
-    // New flow: Done Shopping is enabled whenever there are items,
-    // regardless of docking state
     if (hasItems) {
       this.btnCheckout.disabled = false;
       this.btnCheckout.className = 'btn btn-primary btn-block btn-lg btn-glow';
@@ -504,7 +494,6 @@ class ReviewModule {
   }
   bindEvents() {
     this.bus.on('review:open', () => this.openReview());
-
     if (this.btnReviewBack) {
       this.btnReviewBack.addEventListener('click', () => {
         this.reviewModal.classList.remove('show');
@@ -521,7 +510,6 @@ class ReviewModule {
     const items = this.cartModule.items;
     const removalRequests = this.cartModule.removalRequests;
 
-    // Items list
     this.reviewItemsTitle.textContent = `Items (${items.length})`;
     this.reviewItems.innerHTML = items.map(item => `
       <div class="review-item">
@@ -530,7 +518,6 @@ class ReviewModule {
       </div>
     `).join('');
 
-    // Removal requests
     if (removalRequests && removalRequests.length > 0) {
       this.reviewRemovalsSection.style.display = 'block';
       this.reviewRemovals.innerHTML = removalRequests.map(r => `
@@ -540,9 +527,7 @@ class ReviewModule {
       this.reviewRemovalsSection.style.display = 'none';
     }
 
-    // Total
     this.reviewTotal.textContent = CartStateModule.formatCurrency(this.cartModule.getTotalAmount());
-
     this.reviewModal.classList.add('show');
   }
   async confirmAndPay() {
@@ -567,10 +552,15 @@ class ReviewModule {
         return;
       }
 
-      // Close review, open dock-wait
+      // If the cart is already docked, go straight to payment modal
+      // Otherwise show the dock-wait modal
       this.reviewModal.classList.remove('show');
-      this.dockWaitModal.classList.add('show');
 
+      if (this.cartModule.isDockedAtStation) {
+        this.bus.emit('checkout:open_modal');
+      } else {
+        this.dockWaitModal.classList.add('show');
+      }
     } catch (err) {
       console.error('[confirm-payment] error:', err);
       this.ui.showToast('Network error', 'error');
@@ -601,7 +591,6 @@ class ReviewModule {
 
       this.dockWaitModal.classList.remove('show');
       this.ui.showToast('You can continue shopping', 'info');
-
     } catch (err) {
       console.error('[cancel-payment] error:', err);
       this.ui.showToast('Network error', 'error');
@@ -610,7 +599,6 @@ class ReviewModule {
       this.btnDockWaitCancel.textContent = 'Cancel and continue shopping';
     }
   }
-  // Called by the app when docking is detected and we were waiting
   onDocked() {
     if (this.dockWaitModal.classList.contains('show')) {
       this.dockWaitModal.classList.remove('show');
@@ -816,7 +804,7 @@ class CheckoutModule {
 
 
 // ==========================================================================
-// 8. MockLiveFeedModule (Dev panel — products from DB)
+// 8. MockLiveFeedModule (Dev panel)
 // ==========================================================================
 class MockLiveFeedModule {
   constructor(bus, cartModule) {
@@ -909,7 +897,6 @@ class MockLiveFeedModule {
         message: `${action === 'added' ? 'Added' : 'Removed'}: ${name}`,
         type: action === 'added' ? 'success' : 'info'
       });
-      this.logMQTTEvent('rfid_scan', { action, rfid_tag: rfidTag, name });
     } catch (err) {
       console.error('Scan error:', err);
       this.bus.emit('ui:toast', { message: 'Network error', type: 'error' });
@@ -948,7 +935,6 @@ class MockLiveFeedModule {
           } else {
             const newDocked = Boolean(data.session?.isDocked);
             this.cartModule.setDockedState(newDocked);
-            this.logMQTTEvent('station_gateway', { docked: newDocked });
             this.bus.emit('ui:toast', {
               message: newDocked ? 'Cart docked' : 'Cart undocked',
               type: 'success'
@@ -983,15 +969,6 @@ class MockLiveFeedModule {
       this.debugPanel.classList.add('collapsed');
       if (this.debugToggleText) this.debugToggleText.textContent = 'Expand Controls';
     }
-  }
-  logMQTTEvent(topic, payload) {
-    if (!this.debugEventLog) return;
-    const time = new Date().toLocaleTimeString();
-    const div = document.createElement('div');
-    div.className = 'log-line info';
-    div.textContent = `[${time}] [mqtt/${topic}] ${JSON.stringify(payload)}`;
-    this.debugEventLog.appendChild(div);
-    this.debugEventLog.scrollTop = this.debugEventLog.scrollHeight;
   }
 }
 
@@ -1093,9 +1070,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const mockFeed = new MockLiveFeedModule(appBus, cartModule);
   const authModule = new AuthModule(appBus);
 
-  // =====================================================================
-  // AUTO-PAIR FROM URL / HASH
-  // =====================================================================
+  // Auto-pair from URL
   const urlParams = new URLSearchParams(window.location.search);
   let urlCartId = urlParams.get('cart_id');
 
@@ -1103,20 +1078,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const hash = window.location.hash.substring(1);
     const hashParams = new URLSearchParams(hash);
     urlCartId = hashParams.get('cart');
-    if (urlCartId) {
-      console.log('[AutoPair] Cart ID from hash:', urlCartId);
-    }
   }
 
   if (urlCartId) {
-    console.log('[AutoPair] Cart ID from URL:', urlCartId);
     localStorage.setItem('pendingCartId', urlCartId);
   } else {
     const saved = localStorage.getItem('pendingCartId');
-    if (saved) {
-      urlCartId = saved;
-      console.log('[AutoPair] Restored cart ID from localStorage:', urlCartId);
-    }
+    if (saved) urlCartId = saved;
   }
 
   if (urlCartId) {
@@ -1125,15 +1093,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setTimeout(() => {
       if (authModule.customer) {
-        console.log('[AutoPair] Logged in — pairing now:', urlCartId);
         appBus.emit('qr:scanned', { cartId: urlCartId });
         localStorage.removeItem('pendingCartId');
       } else {
-        console.log('[AutoPair] Waiting for login before pairing:', urlCartId);
         const checkLogin = setInterval(() => {
           if (authModule.customer) {
             clearInterval(checkLogin);
-            console.log('[AutoPair] Login detected — pairing:', urlCartId);
             appBus.emit('qr:scanned', { cartId: urlCartId });
             localStorage.removeItem('pendingCartId');
           }
@@ -1143,7 +1108,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   appBus.on('qr:scanned', async (data) => {
-    console.log('[Pair] Attempting to pair:', data.cartId);
     try {
       const res = await fetch(`${window.API_URL}/api/cart/pair`, {
         method: 'POST',
@@ -1167,9 +1131,6 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.removeItem('pendingCartId');
   });
 
-  // =====================================================================
-  // SERVER SESSION POLLING
-  // =====================================================================
   let lastServerSignature = '';
   let lastDockedState = false;
 
@@ -1185,7 +1146,6 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Update items
     const serverItems = (session.items || []).map(item => ({
       sku: item.sku,
       name: item.name,
@@ -1199,24 +1159,15 @@ document.addEventListener('DOMContentLoaded', () => {
       cartModule.items = serverItems;
     }
 
-    // Update removal requests
-    const requests = (session.items || [])
+    cartModule.removalRequests = (session.items || [])
       .filter(i => i.removeRequestedAt)
-      .map(i => ({
-        id: i.id,
-        sku: i.sku,
-        name: i.name
-      }));
-    cartModule.removalRequests = requests;
+      .map(i => ({ id: i.id, sku: i.sku, name: i.name }));
 
-    // Update docked state
     const nowDocked = Boolean(session.isDocked);
     const wasDocked = lastDockedState;
     lastDockedState = nowDocked;
     cartModule.setDockedState(nowDocked);
 
-    // If we just transitioned to docked and there's a dock-wait modal open,
-    // swap to payment method modal
     if (nowDocked && !wasDocked) {
       reviewModule.onDocked();
     }
@@ -1245,9 +1196,7 @@ document.addEventListener('DOMContentLoaded', () => {
   appBus.on('cart:unpaired', () => { lastServerSignature = ''; });
   pollCart();
 
-  // =====================================================================
-  // PAYSTACK CALLBACK
-  // =====================================================================
+  // Paystack callback
   const paid = urlParams.get('paid');
   const paidCartId = urlParams.get('cart_id');
   const paidReference = urlParams.get('reference');

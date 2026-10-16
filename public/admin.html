@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartCart — Admin</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      min-height: 100vh;
+    }
+
+    /* Login gate */
+    .login-gate {
+      position: fixed; inset: 0;
+      background: #0f172a;
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+      z-index: 1000;
+    }
+    .login-gate.hidden { display: none; }
+    .login-card {
+      background: #1e293b;
+      padding: 40px 32px;
+      border-radius: 16px;
+      max-width: 380px; width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      text-align: center;
+    }
+    .login-card h1 {
+      font-size: 1.4rem;
+      margin-bottom: 8px;
+    }
+    .login-card p {
+      color: #94a3b8;
+      font-size: 0.9rem;
+      margin-bottom: 24px;
+    }
+    .login-card input {
+      width: 100%;
+      padding: 14px 16px;
+      background: #0f172a;
+      border: 2px solid #334155;
+      border-radius: 10px;
+      color: #f8fafc;
+      font-size: 1.4rem;
+      text-align: center;
+      letter-spacing: 0.3em;
+      font-family: inherit;
+      margin-bottom: 16px;
+      outline: none;
+    }
+    .login-card input:focus { border-color: #3b82f6; }
+    .login-card button {
+      width: 100%;
+      padding: 14px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .login-card button:hover { background: #2563eb; }
+    .login-card button:disabled { background: #475569; cursor: not-allowed; }
+    .login-error {
+      color: #f87171;
+      font-size: 0.85rem;
+      margin-top: 12px;
+      min-height: 20px;
+    }
+
+    /* App shell */
+    .app-shell { display: none; }
+    .app-shell.visible { display: block; }
+
+    .topbar {
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      display: flex; align-items: center; gap: 10px;
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+    .brand-icon {
+      width: 34px; height: 34px;
+      background: #3b82f6;
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem;
+    }
+    .user-info {
+      display: flex; align-items: center; gap: 12px;
+      font-size: 0.85rem;
+      color: #cbd5e1;
+    }
+    .badge {
+      background: rgba(59,130,246,0.2);
+      color: #93c5fd;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .btn-logout {
+      background: rgba(248,113,113,0.15);
+      color: #f87171;
+      border: 1px solid rgba(248,113,113,0.3);
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-logout:hover { background: rgba(248,113,113,0.25); }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 16px 24px 0 24px;
+      border-bottom: 1px solid #334155;
+      overflow-x: auto;
+    }
+    .tab {
+      padding: 10px 18px;
+      cursor: pointer;
+      border-radius: 8px 8px 0 0;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #94a3b8;
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
+    }
+    .tab:hover { color: #cbd5e1; }
+    .tab.active {
+      color: #60a5fa;
+      border-bottom-color: #60a5fa;
+      background: rgba(59,130,246,0.08);
+    }
+
+    /* Content */
+    .content { padding: 24px; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    .panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .panel-header h2 {
+      font-size: 1.15rem;
+    }
+    .panel-sub {
+      color: #94a3b8;
+      font-size: 0.85rem;
+      margin-top: 4px;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-success { background: #10b981; color: white; }
+    .btn-success:hover { background: #059669; }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid #334155;
+      color: #cbd5e1;
+    }
+    .btn-ghost:hover { background: #334155; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-sm { padding: 5px 10px; font-size: 0.78rem; }
+
+    /* Cards */
+    .card-list { display: flex; flex-direction: column; gap: 10px; }
+    .card {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border: 1px solid #334155;
+      flex-wrap: wrap;
+    }
+    .card.card-alert {
+      border-left: 3px solid #ef4444;
+    }
+    .card.card-alert.resolved {
+      border-left-color: #10b981;
+      opacity: 0.6;
+    }
+    .card-info { flex: 1; min-width: 200px; }
+    .card-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      margin-bottom: 4px;
+    }
+    .card-meta {
+      color: #94a3b8;
+      font-size: 0.78rem;
+      display: flex; gap: 12px; flex-wrap: wrap;
+    }
+    .card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #1e293b;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    thead {
+      background: #0f172a;
+    }
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 0.85rem;
+      border-bottom: 1px solid #334155;
+    }
+    th {
+      font-weight: 600;
+      color: #94a3b8;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: rgba(59,130,246,0.05); }
+    td input {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: #f8fafc;
+      font-size: 0.85rem;
+      width: 100%;
+      font-family: inherit;
+      outline: none;
+    }
+    td input:focus { border-color: #3b82f6; }
+    td input.small { width: 90px; }
+
+    /* Empty state */
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: #64748b;
+      font-size: 0.9rem;
+    }
+
+    /* Toast */
+    .toasts {
+      position: fixed; bottom: 20px; right: 20px;
+      display: flex; flex-direction: column; gap: 8px;
+      z-index: 9999;
+    }
+    .toast {
+      background: #1e293b;
+      border-left: 3px solid #3b82f6;
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-size: 0.85rem;
+      color: #f8fafc;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+      animation: slideIn 0.2s ease-out;
+    }
+    .toast.success { border-left-color: #10b981; }
+    .toast.error { border-left-color: #ef4444; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(20px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    /* Tag chips */
+    .tag-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 0.78rem;
+      font-family: monospace;
+      margin: 3px 3px 3px 0;
+    }
+    .tag-chip.inactive {
+      opacity: 0.4;
+      text-decoration: line-through;
+    }
+    .tag-chip button {
+      background: none;
+      border: none;
+      color: #f87171;
+      cursor: pointer;
+      font-size: 0.9rem;
+      padding: 0 2px;
+    }
+    .tag-chip button:hover { color: #ef4444; }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      align-items: center; justify-content: center;
+      padding: 20px;
+      z-index: 2000;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 480px; width: 100%;
+      max-height: 85vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+    }
+    .modal h3 {
+      font-size: 1.15rem;
+      margin-bottom: 6px;
+    }
+    .modal-sub {
+      color: #94a3b8;
+      font-size: 0.85rem;
+      margin-bottom: 20px;
+    }
+    .modal label {
+      display: block;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+      font-weight: 600;
+      margin-bottom: 6px;
+      margin-top: 14px;
+    }
+    .modal input {
+      width: 100%;
+      padding: 10px 12px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #f8fafc;
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+    }
+    .modal input:focus { border-color: #3b82f6; }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 24px;
+    }
+    .modal-actions button { flex: 1; padding: 12px; }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN GATE -->
+  <div id="login-gate" class="login-gate">
+    <div class="login-card">
+      <h1>SmartCart Admin</h1>
+      <p>Enter staff PIN to continue</p>
+      <input
+        type="password"
+        id="login-pin"
+        placeholder="••••"
+        inputmode="numeric"
+        maxlength="6"
+        autocomplete="off"
+      />
+      <button id="login-btn">Unlock</button>
+      <div class="login-error" id="login-error"></div>
+    </div>
+  </div>
+
+  <!-- APP SHELL -->
+  <div id="app-shell" class="app-shell">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-icon">⚙️</div>
+        <span>SmartCart Admin</span>
+      </div>
+      <div class="user-info">
+        <span class="badge" id="staff-badge">—</span>
+        <button class="btn-logout" id="logout-btn">Logout</button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="alerts">Alerts</div>
+      <div class="tab" data-tab="products">Products</div>
+      <div class="tab" data-tab="staff">Staff</div>
+      <div class="tab" data-tab="transactions">Transactions</div>
+    </div>
+
+    <div class="content">
+
+      <!-- ALERTS PANEL -->
+      <div class="panel active" id="panel-alerts">
+        <div class="panel-header">
+          <div>
+            <h2>Active Alerts</h2>
+            <div class="panel-sub" id="alerts-sub">—</div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-ghost" id="reload-alerts-btn">Reload</button>
+            <button class="btn btn-success" id="resolve-all-btn">Resolve All</button>
+          </div>
+        </div>
+        <div class="card-list" id="alerts-list">
+          <div class="empty">Loading…</div>
+        </div>
+      </div>
+
+      <!-- PRODUCTS PANEL -->
+      <div class="panel" id="panel-products">
+        <div class="panel-header">
+          <div>
+            <h2>Products</h2>
+            <div class="panel-sub" id="products-sub">—</div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-ghost" id="reload-products-btn">Reload</button>
+          </div>
+        </div>
+        <div id="products-container">
+          <div class="empty">Loading…</div>
+        </div>
+      </div>
+
+      <!-- STAFF PANEL -->
+      <div class="panel" id="panel-staff">
+        <div class="panel-header">
+          <div>
+            <h2>Staff</h2>
+            <div class="panel-sub" id="staff-sub">—</div>
+          </div>
+          <button class="btn btn-primary" id="add-staff-btn">+ Add Staff</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="staff-tbody">
+            <tr><td colspan="4" class="empty">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- TRANSACTIONS PANEL -->
+      <div class="panel" id="panel-transactions">
+        <div class="panel-header">
+          <div>
+            <h2>Recent Wallet Transactions</h2>
+            <div class="panel-sub" id="transactions-sub">—</div>
+          </div>
+          <button class="btn btn-ghost" id="reload-transactions-btn">Reload</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Customer</th>
+              <th>Phone</th>
+              <th>Amount</th>
+              <th>Type</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="transactions-tbody">
+            <tr><td colspan="6" class="empty">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ADD STAFF MODAL -->
+  <div class="modal-backdrop" id="modal-add-staff">
+    <div class="modal">
+      <h3>Add Staff Member</h3>
+      <div class="modal-sub">They can silence alarms using their PIN.</div>
+      <label for="new-staff-name">Name</label>
+      <input type="text" id="new-staff-name" placeholder="e.g. John" />
+      <label for="new-staff-pin">PIN (4-6 digits)</label>
+      <input type="password" id="new-staff-pin" placeholder="••••" inputmode="numeric" maxlength="6" />
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="cancel-add-staff">Cancel</button>
+        <button class="btn btn-primary" id="confirm-add-staff">Add Staff</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PRODUCT TAGS MODAL -->
+  <div class="modal-backdrop" id="modal-tags">
+    <div class="modal">
+      <h3 id="tags-modal-title">Tags</h3>
+      <div class="modal-sub">All RFID tags assigned to this product.</div>
+      <div id="tags-list" style="margin: 16px 0;"></div>
+      <label for="new-tag-input">Add new tag</label>
+      <input type="text" id="new-tag-input" placeholder="e.g. E3087506" style="text-transform: uppercase;" />
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="close-tags-modal">Close</button>
+        <button class="btn btn-primary" id="add-tag-btn">Add Tag</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <script src="admin.js"></script>
+</body>
+</html>

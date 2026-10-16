@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPin } from '@/lib/auth';
-import { generateAdminToken } from '@/lib/adminAuth';
 
+/**
+ * POST /api/admin/login
+ * Body: { pin }
+ *
+ * Validates the PIN and returns success. The admin page then stores
+ * the PIN in sessionStorage and sends it on every subsequent request
+ * as `x-admin-pin`.
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -34,12 +41,9 @@ export async function POST(request: Request) {
     for (const staff of staffList) {
       const valid = await verifyPin(pin, staff.pinHash);
       if (valid) {
-        const token = await generateAdminToken(staff.id, staff.name);
         return NextResponse.json({
           success: true,
-          token,
           staff: { id: staff.id, name: staff.name },
-          expiresInSeconds: 7200,
         });
       }
     }

@@ -1,93 +1,63 @@
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
+import { verifyPin } from '@/lib/auth';
 
 export interface AdminSession {
   staffId: number;
   name: string;
 }
 
-const TOKEN_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+/**
+ * Admin auth via direct PIN validation on every request.
+ *
+ * The admin page stores the staff PIN in sessionStorage and sends it
+ * in the x-admin-pin header with every admin API call. The backend
+ * validates against the Staff table each time.
+ *
+ * This is stateless, works on serverless, and requires no new tables.
+ */
 
-// ============================================================
-//  Generate a new admin token and store it in the DB
-// ============================================================
-export async function generateAdminToken(
-  staffId: number,
-  name: string
-): Promise<string> {
-  const token = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
+const pinCache = new Map<string, { staffId: number; name: string; cachedAt: number }>();
+const PIN_CACHE_MS = 60 * 1000; // cache for 1 minute to avoid re-hashing on rapid calls
 
-  await prisma.adminSession.create({
-    data: {
-      token,
-      staffId,
-      staffName: name,
-      expiresAt,
-    },
-  });
-
-  // Opportunistic cleanup: delete expired tokens occasionally
-  try {
-    await prisma.adminSession.deleteMany({
-      where: { expiresAt: { lt: new Date() } },
-    });
-  } catch (e) {
-    // Not critical
-  }
-
-  return token;
-}
-
-// ============================================================
-//  Validate a token from the request
-// ============================================================
-export async function validateAdminToken(
-  token: string | null
-): Promise<AdminSession | null> {
-  if (!token) return null;
-
-  const row = await prisma.adminSession.findUnique({
-    where: { token },
-  });
-
-  if (!row) return null;
-  if (row.expiresAt < new Date()) {
-    // Expired — clean it up
-    try {
-      await prisma.adminSession.delete({ where: { id: row.id } });
-    } catch (e) {}
-    return null;
-  }
-
-  // Update lastUsedAt opportunistically (non-blocking)
-  prisma.adminSession
-    .update({
-      where: { id: row.id },
-      data: { lastUsedAt: new Date() },
-    })
-    .catch(() => {});
-
-  return {
-    staffId: row.staffId,
-    name: row.staffName,
-  };
-}
-
-// ============================================================
-//  Middleware-style helper
-// ============================================================
 export async function requireAdmin(
   request: Request
 ): Promise<AdminSession | NextResponse> {
-  const authHeader = request.headers.get('x-admin-token');
-  const session = await validateAdminToken(authHeader);
-  if (!session) {
+  const pin = request.headers.get('x-admin-pin');
+
+  if (!pin || !/^\d{4,6}$/.test(pin)) {
     return NextResponse.json(
       { error: 'Not authenticated as admin' },
       { status: 401 }
     );
   }
-  return session;
+
+  // Check short-lived cache
+  const cached = pinCache.get(pin);
+  if (cached && Date.now() - cached.cachedAt < PIN_CACHE_MS) {
+    return { staffId: cached.staffId, name: cached.name };
+  }
+
+  // Validate against DB
+  const staffList = await prisma.staff.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true, pinHash: true },
+  });
+
+  for (const staff of staffList) {
+    const valid = await verifyPin(pin, staff.pinHash);
+    if (valid) {
+      pinCache.set(pin, {
+        staffId: staff.id,
+        name: staff.name,
+        cachedAt: Date.now(),
+      });
+      return { staffId: staff.id, name: staff.name };
+    }
+  }
+
+  return NextResponse.json(
+    { error: 'Invalid staff PIN' },
+    { status: 401 }
+  );
 }

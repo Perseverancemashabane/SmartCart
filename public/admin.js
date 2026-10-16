@@ -1,12 +1,13 @@
 /**
- * SmartCart Admin — Frontend Logic
+ * SmartCart Admin — Frontend Logic (v2)
+ * Uses PIN-based auth (x-admin-pin header)
  */
 
 const API = window.location.origin;
-const TOKEN_KEY = 'smartcart_admin_token';
+const PIN_KEY = 'smartcart_admin_pin';
 const STAFF_KEY = 'smartcart_admin_staff';
 
-let token = sessionStorage.getItem(TOKEN_KEY) || '';
+let adminPin = sessionStorage.getItem(PIN_KEY) || '';
 let staffName = sessionStorage.getItem(STAFF_KEY) || '';
 let currentTagsProductId = null;
 
@@ -46,12 +47,11 @@ async function adminRequest(path, body = {}) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-admin-token': token,
+      'x-admin-pin': adminPin,
     },
     body: JSON.stringify(body),
   });
   if (res.status === 401) {
-    // Token expired or invalid
     logout();
     throw new Error('Session expired. Please log in again.');
   }
@@ -91,9 +91,9 @@ async function attemptLogin() {
       return;
     }
 
-    token = data.token;
+    adminPin = pin;
     staffName = data.staff.name;
-    sessionStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.setItem(PIN_KEY, adminPin);
     sessionStorage.setItem(STAFF_KEY, staffName);
     enterAdmin();
   } catch (err) {
@@ -105,9 +105,9 @@ async function attemptLogin() {
 }
 
 function logout() {
-  token = '';
+  adminPin = '';
   staffName = '';
-  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(PIN_KEY);
   sessionStorage.removeItem(STAFF_KEY);
   document.getElementById('app-shell').classList.remove('visible');
   document.getElementById('login-gate').classList.remove('hidden');
@@ -147,32 +147,40 @@ function switchTab(name) {
 // ============================================================
 // Alerts
 // ============================================================
+let showingResolvedAlerts = false;
+
 async function loadAlerts() {
   const list = document.getElementById('alerts-list');
   const sub = document.getElementById('alerts-sub');
   list.innerHTML = '<div class="empty">Loading…</div>';
   try {
-    const data = await adminRequest('/api/admin/alerts', { includeResolved: false });
-    sub.textContent = `${data.activeCount} active alert${data.activeCount === 1 ? '' : 's'}`;
+    const data = await adminRequest('/api/admin/alerts', {
+      includeResolved: showingResolvedAlerts,
+    });
+    sub.textContent = `${data.activeCount} active alert${data.activeCount === 1 ? '' : 's'}${showingResolvedAlerts ? ' · showing resolved too' : ''}`;
     if (data.alerts.length === 0) {
-      list.innerHTML = '<div class="empty">No active alerts 🎉</div>';
+      list.innerHTML = '<div class="empty">No alerts 🎉</div>';
       return;
     }
-    list.innerHTML = data.alerts.map(a => `
-      <div class="card card-alert">
-        <div class="card-info">
-          <div class="card-title">${escapeHtml(a.type.replace('_', ' ').toUpperCase())} — Cart ${escapeHtml(a.cartId)}</div>
-          <div class="card-meta">
-            <span>Session ${a.sessionId ?? '—'}</span>
-            <span>${escapeHtml(a.reason || '')}</span>
-            <span>${formatDate(a.createdAt)}</span>
+    list.innerHTML = data.alerts.map(a => {
+      const isResolved = !!a.resolvedAt;
+      return `
+        <div class="card card-alert ${isResolved ? 'resolved' : ''}">
+          <div class="card-info">
+            <div class="card-title">${escapeHtml(a.type.replace('_', ' ').toUpperCase())} — Cart ${escapeHtml(a.cartId)}</div>
+            <div class="card-meta">
+              <span>Session ${a.sessionId ?? '—'}</span>
+              <span>${escapeHtml(a.reason || '')}</span>
+              <span>${formatDate(a.createdAt)}</span>
+              ${isResolved ? `<span>Resolved by ${escapeHtml(a.resolvedBy || '?')} (${escapeHtml(a.resolution || '')})</span>` : ''}
+            </div>
+          </div>
+          <div class="card-actions">
+            ${!isResolved ? `<button class="btn btn-success btn-sm" data-resolve="${a.id}">Resolve</button>` : '<span class="badge">Resolved</span>'}
           </div>
         </div>
-        <div class="card-actions">
-          <button class="btn btn-success btn-sm" data-resolve="${a.id}">Resolve</button>
-        </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     list.querySelectorAll('[data-resolve]').forEach(btn => {
       btn.addEventListener('click', () => resolveAlert(parseInt(btn.dataset.resolve, 10), btn));
@@ -284,6 +292,9 @@ async function saveProduct(productId, btn) {
   try {
     await adminRequest('/api/admin/product/update', body);
     showToast('Product saved', 'success');
+    // Reload to reflect server-side values
+    document.getElementById('products-container').dataset.loaded = '';
+    loadProducts();
   } catch (err) {
     showToast(err.message, 'error');
   } finally {
@@ -346,9 +357,6 @@ async function addTag() {
     showToast(`Tag ${tag} added`, 'success');
     input.value = '';
     await refreshTagsList();
-    // Refresh product list tag counts
-    document.getElementById('products-container').dataset.loaded = '';
-    loadProducts();
   } catch (err) {
     showToast(err.message, 'error');
   } finally {
@@ -514,8 +522,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('add-tag-btn').addEventListener('click', addTag);
 
-  // If we already have a token in sessionStorage, auto-enter
-  if (token && staffName) {
+  // Auto-restore session
+  if (adminPin && staffName) {
     enterAdmin();
   }
 });

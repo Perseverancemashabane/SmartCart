@@ -357,6 +357,9 @@ async function addTag() {
     showToast(`Tag ${tag} added`, 'success');
     input.value = '';
     await refreshTagsList();
+    // Refresh the products list behind the modal so the count updates
+    document.getElementById('products-container').dataset.loaded = '';
+    await loadProducts();
   } catch (err) {
     showToast(err.message, 'error');
   } finally {
@@ -371,6 +374,9 @@ async function removeTag(tagId) {
     await adminRequest('/api/admin/tag/remove', { tagId });
     showToast('Tag deactivated', 'success');
     await refreshTagsList();
+    // Refresh products list behind the modal
+    document.getElementById('products-container').dataset.loaded = '';
+    await loadProducts();
   } catch (err) {
     showToast(err.message, 'error');
   }

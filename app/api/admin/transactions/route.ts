@@ -2,13 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdmin } from '@/lib/adminAuth';
 
-/**
- * POST /api/admin/transactions
- * Body: { limit? }
- */
 export async function POST(request: Request) {
   try {
-    const auth = requireAdmin(request);
+    const auth = await requireAdmin(request);
     if (auth instanceof NextResponse) return auth;
 
     const body = await request.json().catch(() => ({}));

@@ -2,15 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdmin } from '@/lib/adminAuth';
 
-/**
- * POST /api/admin/alert/resolve-all
- *
- * Marks ALL unresolved alerts as resolved with resolution='bulk'.
- * Does NOT touch cart sessions — just clears the admin dashboard.
- */
 export async function POST(request: Request) {
   try {
-    const auth = requireAdmin(request);
+    const auth = await requireAdmin(request);
     if (auth instanceof NextResponse) return auth;
 
     const result = await prisma.alert.updateMany({

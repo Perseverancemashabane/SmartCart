@@ -3,13 +3,9 @@ import { prisma } from '@/lib/prisma';
 import { hashPin } from '@/lib/auth';
 import { requireAdmin } from '@/lib/adminAuth';
 
-/**
- * POST /api/admin/staff/add
- * Body: { name, pin }
- */
 export async function POST(request: Request) {
   try {
-    const auth = requireAdmin(request);
+    const auth = await requireAdmin(request);
     if (auth instanceof NextResponse) return auth;
 
     const body = await request.json();

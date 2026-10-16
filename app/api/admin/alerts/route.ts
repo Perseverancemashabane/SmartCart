@@ -4,7 +4,7 @@ import { requireAdmin } from '@/lib/adminAuth';
 
 export async function POST(request: Request) {
   try {
-    const auth = requireAdmin(request);
+    const auth = await requireAdmin(request);
     if (auth instanceof NextResponse) return auth;
 
     const body = await request.json().catch(() => ({}));

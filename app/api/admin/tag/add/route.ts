@@ -2,57 +2,30 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdmin } from '@/lib/adminAuth';
 
-/**
- * POST /api/admin/tag/add
- * Body: { productId, rfidTagId }
- */
 export async function POST(request: Request) {
   try {
-    const auth = requireAdmin(request);
+    const auth = await requireAdmin(request);
     if (auth instanceof NextResponse) return auth;
 
     const body = await request.json();
-    const { productId, rfidTagId } = body;
+    const { tagId } = body;
 
-    if (!productId || !rfidTagId) {
-      return NextResponse.json(
-        { error: 'productId and rfidTagId are required' },
-        { status: 400 }
-      );
+    if (!tagId) {
+      return NextResponse.json({ error: 'tagId is required' }, { status: 400 });
     }
 
-    const tag = rfidTagId.trim().toUpperCase();
-
-    // Check if tag already exists
-    const existing = await prisma.productTag.findUnique({
-      where: { rfidTagId: tag },
-    });
-
-    if (existing) {
-      return NextResponse.json(
-        { error: `Tag ${tag} is already assigned to product ${existing.productId}` },
-        { status: 409 }
-      );
-    }
-
-    const created = await prisma.productTag.create({
-      data: {
-        rfidTagId: tag,
-        productId,
-        isActive: true,
-      },
+    const updated = await prisma.productTag.update({
+      where: { id: tagId },
+      data: { isActive: false },
     });
 
     return NextResponse.json({
       success: true,
-      tag: {
-        id: created.id,
-        rfidTagId: created.rfidTagId,
-        productId: created.productId,
-      },
+      tagId: updated.id,
+      rfidTagId: updated.rfidTagId,
     });
   } catch (error: any) {
-    console.error('Tag add error:', error);
+    console.error('Tag remove error:', error);
     return NextResponse.json(
       { error: 'Internal Server Error', message: error.message },
       { status: 500 }

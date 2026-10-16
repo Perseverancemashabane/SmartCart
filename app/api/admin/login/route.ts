@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     for (const staff of staffList) {
       const valid = await verifyPin(pin, staff.pinHash);
       if (valid) {
-        const token = generateAdminToken(staff.id, staff.name);
+        const token = await generateAdminToken(staff.id, staff.name);
         return NextResponse.json({
           success: true,
           token,

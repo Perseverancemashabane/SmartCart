@@ -3,16 +3,9 @@ import { prisma } from '@/lib/prisma';
 import { requireAdmin } from '@/lib/adminAuth';
 import { cartEventsBus } from '@/lib/events';
 
-/**
- * POST /api/admin/alert/resolve
- * Body: { alertId }
- *
- * Resolves an alert AND calls anti-theft-clear with "continue"
- * to reset the cart session's alarmTriggered flag.
- */
 export async function POST(request: Request) {
   try {
-    const auth = requireAdmin(request);
+    const auth = await requireAdmin(request);
     if (auth instanceof NextResponse) return auth;
 
     const body = await request.json();
@@ -38,7 +31,6 @@ export async function POST(request: Request) {
       });
     }
 
-    // Reset alarmTriggered on the active session for this cart (if any)
     const session = await prisma.cartSession.findFirst({
       where: { cartId: alert.cartId, isActive: true },
       orderBy: { createdAt: 'desc' },
@@ -58,7 +50,6 @@ export async function POST(request: Request) {
       });
     }
 
-    // Mark alert resolved
     const updated = await prisma.alert.update({
       where: { id: alertId },
       data: {

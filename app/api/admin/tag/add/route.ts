@@ -8,24 +8,46 @@ export async function POST(request: Request) {
     if (auth instanceof NextResponse) return auth;
 
     const body = await request.json();
-    const { tagId } = body;
+    const { productId, rfidTagId } = body;
 
-    if (!tagId) {
-      return NextResponse.json({ error: 'tagId is required' }, { status: 400 });
+    if (!productId || !rfidTagId) {
+      return NextResponse.json(
+        { error: 'productId and rfidTagId are required' },
+        { status: 400 }
+      );
     }
 
-    const updated = await prisma.productTag.update({
-      where: { id: tagId },
-      data: { isActive: false },
+    const tag = rfidTagId.trim().toUpperCase();
+
+    const existing = await prisma.productTag.findUnique({
+      where: { rfidTagId: tag },
+    });
+
+    if (existing) {
+      return NextResponse.json(
+        { error: `Tag ${tag} is already assigned to product ${existing.productId}` },
+        { status: 409 }
+      );
+    }
+
+    const created = await prisma.productTag.create({
+      data: {
+        rfidTagId: tag,
+        productId,
+        isActive: true,
+      },
     });
 
     return NextResponse.json({
       success: true,
-      tagId: updated.id,
-      rfidTagId: updated.rfidTagId,
+      tag: {
+        id: created.id,
+        rfidTagId: created.rfidTagId,
+        productId: created.productId,
+      },
     });
   } catch (error: any) {
-    console.error('Tag remove error:', error);
+    console.error('Tag add error:', error);
     return NextResponse.json(
       { error: 'Internal Server Error', message: error.message },
       { status: 500 }

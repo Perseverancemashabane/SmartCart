@@ -1,28 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAdmin } from '@/lib/adminAuth';
 
-/**
- * POST /api/admin/alerts
- *
- * Body: { "includeResolved": false }
- *
- * Returns active alerts (or all alerts if includeResolved is true).
- *
- * Response:
- *   {
- *     success: true,
- *     activeCount: N,
- *     alerts: [
- *       { id, cartId, type, reason, createdAt, resolvedAt, resolution, ... }
- *     ]
- *   }
- *
- * The admin page polls this every few seconds.
- *
- * No auth for now — we'll add admin auth later.
- */
 export async function POST(request: Request) {
   try {
+    const auth = requireAdmin(request);
+    if (auth instanceof NextResponse) return auth;
+
     const body = await request.json().catch(() => ({}));
     const { includeResolved = false } = body || {};
 

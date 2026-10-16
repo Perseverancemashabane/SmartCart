@@ -30,15 +30,8 @@
       box-shadow: 0 20px 60px rgba(0,0,0,0.5);
       text-align: center;
     }
-    .login-card h1 {
-      font-size: 1.4rem;
-      margin-bottom: 8px;
-    }
-    .login-card p {
-      color: #94a3b8;
-      font-size: 0.9rem;
-      margin-bottom: 24px;
-    }
+    .login-card h1 { font-size: 1.4rem; margin-bottom: 8px; }
+    .login-card p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 24px; }
     .login-card input {
       width: 100%;
       padding: 14px 16px;
@@ -163,14 +156,8 @@
       margin-bottom: 16px;
       flex-wrap: wrap;
     }
-    .panel-header h2 {
-      font-size: 1.15rem;
-    }
-    .panel-sub {
-      color: #94a3b8;
-      font-size: 0.85rem;
-      margin-top: 4px;
-    }
+    .panel-header h2 { font-size: 1.15rem; }
+    .panel-sub { color: #94a3b8; font-size: 0.85rem; margin-top: 4px; }
 
     /* Buttons */
     .btn {
@@ -195,6 +182,11 @@
       color: #cbd5e1;
     }
     .btn-ghost:hover { background: #334155; }
+    .btn-ghost.active {
+      background: #3b82f6;
+      border-color: #3b82f6;
+      color: white;
+    }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-sm { padding: 5px 10px; font-size: 0.78rem; }
 
@@ -211,19 +203,13 @@
       border: 1px solid #334155;
       flex-wrap: wrap;
     }
-    .card.card-alert {
-      border-left: 3px solid #ef4444;
-    }
+    .card.card-alert { border-left: 3px solid #ef4444; }
     .card.card-alert.resolved {
       border-left-color: #10b981;
-      opacity: 0.6;
+      opacity: 0.65;
     }
     .card-info { flex: 1; min-width: 200px; }
-    .card-title {
-      font-weight: 600;
-      font-size: 0.95rem;
-      margin-bottom: 4px;
-    }
+    .card-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 4px; }
     .card-meta {
       color: #94a3b8;
       font-size: 0.78rem;
@@ -238,15 +224,15 @@
       background: #1e293b;
       border-radius: 12px;
       overflow: hidden;
+      table-layout: fixed;
     }
-    thead {
-      background: #0f172a;
-    }
+    thead { background: #0f172a; }
     th, td {
       padding: 12px 16px;
       text-align: left;
       font-size: 0.85rem;
       border-bottom: 1px solid #334155;
+      vertical-align: middle;
     }
     th {
       font-weight: 600;
@@ -257,11 +243,12 @@
     }
     tbody tr:last-child td { border-bottom: none; }
     tbody tr:hover { background: rgba(59,130,246,0.05); }
+
     td input {
       background: #0f172a;
       border: 1px solid #334155;
       border-radius: 6px;
-      padding: 6px 10px;
+      padding: 8px 10px;
       color: #f8fafc;
       font-size: 0.85rem;
       width: 100%;
@@ -269,7 +256,14 @@
       outline: none;
     }
     td input:focus { border-color: #3b82f6; }
-    td input.small { width: 90px; }
+
+    /* Column widths */
+    .col-id { width: 60px; }
+    .col-name { width: auto; }
+    .col-price { width: 130px; }
+    .col-stock { width: 100px; }
+    .col-tags { width: 110px; }
+    .col-actions { width: 100px; }
 
     /* Empty state */
     .empty {
@@ -294,6 +288,7 @@
       color: #f8fafc;
       box-shadow: 0 8px 30px rgba(0,0,0,0.5);
       animation: slideIn 0.2s ease-out;
+      max-width: 320px;
     }
     .toast.success { border-left-color: #10b981; }
     .toast.error { border-left-color: #ef4444; }
@@ -315,10 +310,8 @@
       font-family: monospace;
       margin: 3px 3px 3px 0;
     }
-    .tag-chip.inactive {
-      opacity: 0.4;
-      text-decoration: line-through;
-    }
+    .tag-chip.inactive { opacity: 0.45; }
+    .tag-chip.inactive .tag-name { text-decoration: line-through; }
     .tag-chip button {
       background: none;
       border: none;
@@ -348,15 +341,8 @@
       overflow-y: auto;
       box-shadow: 0 20px 60px rgba(0,0,0,0.7);
     }
-    .modal h3 {
-      font-size: 1.15rem;
-      margin-bottom: 6px;
-    }
-    .modal-sub {
-      color: #94a3b8;
-      font-size: 0.85rem;
-      margin-bottom: 20px;
-    }
+    .modal h3 { font-size: 1.15rem; margin-bottom: 6px; }
+    .modal-sub { color: #94a3b8; font-size: 0.85rem; margin-bottom: 20px; }
     .modal label {
       display: block;
       font-size: 0.8rem;
@@ -431,10 +417,11 @@
       <div class="panel active" id="panel-alerts">
         <div class="panel-header">
           <div>
-            <h2>Active Alerts</h2>
+            <h2>Alerts</h2>
             <div class="panel-sub" id="alerts-sub">—</div>
           </div>
-          <div style="display: flex; gap: 8px;">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn btn-ghost" id="toggle-resolved-btn">Show Resolved</button>
             <button class="btn btn-ghost" id="reload-alerts-btn">Reload</button>
             <button class="btn btn-success" id="resolve-all-btn">Resolve All</button>
           </div>
@@ -453,6 +440,7 @@
           </div>
           <div style="display: flex; gap: 8px;">
             <button class="btn btn-ghost" id="reload-products-btn">Reload</button>
+            <button class="btn btn-primary" id="add-product-btn">+ Add Product</button>
           </div>
         </div>
         <div id="products-container">
@@ -472,10 +460,10 @@
         <table>
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Status</th>
-              <th>Actions</th>
+              <th class="col-id">ID</th>
+              <th class="col-name">Name</th>
+              <th class="col-tags">Status</th>
+              <th class="col-actions">Actions</th>
             </tr>
           </thead>
           <tbody id="staff-tbody">
@@ -496,12 +484,12 @@
         <table>
           <thead>
             <tr>
-              <th>Time</th>
+              <th style="width: 160px;">Time</th>
               <th>Customer</th>
-              <th>Phone</th>
-              <th>Amount</th>
-              <th>Type</th>
-              <th>Status</th>
+              <th style="width: 130px;">Phone</th>
+              <th style="width: 110px;">Amount</th>
+              <th style="width: 90px;">Type</th>
+              <th style="width: 110px;">Status</th>
             </tr>
           </thead>
           <tbody id="transactions-tbody">
@@ -529,6 +517,24 @@
     </div>
   </div>
 
+  <!-- ADD PRODUCT MODAL -->
+  <div class="modal-backdrop" id="modal-add-product">
+    <div class="modal">
+      <h3>Add Product</h3>
+      <div class="modal-sub">Create a new product. Add tags after saving.</div>
+      <label for="new-product-name">Name</label>
+      <input type="text" id="new-product-name" placeholder="e.g. Coca-Cola 500ml" />
+      <label for="new-product-price">Price (Rands)</label>
+      <input type="number" id="new-product-price" step="0.01" min="0" placeholder="e.g. 15.99" />
+      <label for="new-product-stock">Stock</label>
+      <input type="number" id="new-product-stock" min="0" value="0" />
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="cancel-add-product">Cancel</button>
+        <button class="btn btn-primary" id="confirm-add-product">Add Product</button>
+      </div>
+    </div>
+  </div>
+
   <!-- PRODUCT TAGS MODAL -->
   <div class="modal-backdrop" id="modal-tags">
     <div class="modal">
@@ -546,6 +552,6 @@
 
   <div class="toasts" id="toasts"></div>
 
-  <script src="admin.js"></script>
+  <script src="admin.js?v=2"></script>
 </body>
 </html>

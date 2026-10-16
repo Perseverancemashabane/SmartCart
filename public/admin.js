@@ -1,6 +1,5 @@
 /**
- * SmartCart Admin — Frontend Logic (v2)
- * Uses PIN-based auth (x-admin-pin header)
+ * SmartCart Admin — Frontend Logic (v3)
  */
 
 const API = window.location.origin;
@@ -10,6 +9,7 @@ const STAFF_KEY = 'smartcart_admin_staff';
 let adminPin = sessionStorage.getItem(PIN_KEY) || '';
 let staffName = sessionStorage.getItem(STAFF_KEY) || '';
 let currentTagsProductId = null;
+let showingResolvedAlerts = false;
 
 // ============================================================
 // Helpers
@@ -40,6 +40,14 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = String(str);
   return div.innerHTML;
+}
+
+function parsePrice(input) {
+  // Handle both "15.99" and "15,99"
+  const cleaned = String(input).replace(',', '.').trim();
+  const num = parseFloat(cleaned);
+  if (isNaN(num) || num < 0) return null;
+  return Math.round(num * 100);
 }
 
 async function adminRequest(path, body = {}) {
@@ -147,21 +155,25 @@ function switchTab(name) {
 // ============================================================
 // Alerts
 // ============================================================
-let showingResolvedAlerts = false;
-
 async function loadAlerts() {
   const list = document.getElementById('alerts-list');
   const sub = document.getElementById('alerts-sub');
+  const toggleBtn = document.getElementById('toggle-resolved-btn');
+  toggleBtn.textContent = showingResolvedAlerts ? 'Hide Resolved' : 'Show Resolved';
+  toggleBtn.classList.toggle('active', showingResolvedAlerts);
+
   list.innerHTML = '<div class="empty">Loading…</div>';
   try {
     const data = await adminRequest('/api/admin/alerts', {
       includeResolved: showingResolvedAlerts,
     });
-    sub.textContent = `${data.activeCount} active alert${data.activeCount === 1 ? '' : 's'}${showingResolvedAlerts ? ' · showing resolved too' : ''}`;
+    sub.textContent = `${data.activeCount} active${showingResolvedAlerts ? ` · ${data.alerts.length} total` : ''}`;
+
     if (data.alerts.length === 0) {
       list.innerHTML = '<div class="empty">No alerts 🎉</div>';
       return;
     }
+
     list.innerHTML = data.alerts.map(a => {
       const isResolved = !!a.resolvedAt;
       return `
@@ -172,7 +184,7 @@ async function loadAlerts() {
               <span>Session ${a.sessionId ?? '—'}</span>
               <span>${escapeHtml(a.reason || '')}</span>
               <span>${formatDate(a.createdAt)}</span>
-              ${isResolved ? `<span>Resolved by ${escapeHtml(a.resolvedBy || '?')} (${escapeHtml(a.resolution || '')})</span>` : ''}
+              ${isResolved ? `<span>✓ Resolved by ${escapeHtml(a.resolvedBy || '?')}</span>` : ''}
             </div>
           </div>
           <div class="card-actions">
@@ -229,7 +241,7 @@ async function loadProducts() {
   const sub = document.getElementById('products-sub');
   container.innerHTML = '<div class="empty">Loading…</div>';
   try {
-    const res = await fetch(`${API}/api/products/list`);
+    const res = await fetch(`${API}/api/products/list?t=${Date.now()}`);
     const data = await res.json();
     if (!data.success) throw new Error('Failed to load products');
     sub.textContent = `${data.products.length} products`;
@@ -238,12 +250,12 @@ async function loadProducts() {
       <table>
         <thead>
           <tr>
-            <th style="width:50px;">ID</th>
-            <th>Name</th>
-            <th style="width:130px;">Price (R)</th>
-            <th style="width:110px;">Stock</th>
-            <th style="width:90px;">Tags</th>
-            <th style="width:100px;">Actions</th>
+            <th class="col-id">ID</th>
+            <th class="col-name">Name</th>
+            <th class="col-price">Price (R)</th>
+            <th class="col-stock">Stock</th>
+            <th class="col-tags">Tags</th>
+            <th class="col-actions">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -251,8 +263,8 @@ async function loadProducts() {
             <tr data-product-id="${p.id}">
               <td>${p.id}</td>
               <td><input type="text" value="${escapeHtml(p.name)}" data-field="name" /></td>
-              <td><input type="number" step="0.01" min="0" value="${(p.priceCents/100).toFixed(2)}" data-field="price" class="small" /></td>
-              <td><input type="number" min="0" value="${p.stockQuantity ?? 0}" data-field="stock" class="small" /></td>
+              <td><input type="number" step="0.01" min="0" value="${(p.priceCents/100).toFixed(2)}" data-field="price" /></td>
+              <td><input type="number" min="0" value="${p.stockQuantity ?? 0}" data-field="stock" /></td>
               <td><button class="btn btn-ghost btn-sm" data-tags-for="${p.id}">${p.tags.length} tags</button></td>
               <td><button class="btn btn-primary btn-sm" data-save="${p.id}">Save</button></td>
             </tr>
@@ -280,11 +292,17 @@ async function saveProduct(productId, btn) {
   const priceInput = row.querySelector('[data-field="price"]');
   const stockInput = row.querySelector('[data-field="stock"]');
 
+  const priceCents = parsePrice(priceInput.value);
+  if (priceCents === null) {
+    showToast('Invalid price', 'error');
+    return;
+  }
+
   const body = {
     productId,
     name: nameInput.value.trim(),
-    priceCents: Math.round(parseFloat(priceInput.value) * 100),
-    stockQuantity: parseInt(stockInput.value, 10),
+    priceCents,
+    stockQuantity: parseInt(stockInput.value, 10) || 0,
   };
 
   btn.disabled = true;
@@ -292,7 +310,6 @@ async function saveProduct(productId, btn) {
   try {
     await adminRequest('/api/admin/product/update', body);
     showToast('Product saved', 'success');
-    // Reload to reflect server-side values
     document.getElementById('products-container').dataset.loaded = '';
     loadProducts();
   } catch (err) {
@@ -300,6 +317,38 @@ async function saveProduct(productId, btn) {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Save';
+  }
+}
+
+async function addProduct() {
+  const nameInput = document.getElementById('new-product-name');
+  const priceInput = document.getElementById('new-product-price');
+  const stockInput = document.getElementById('new-product-stock');
+  const btn = document.getElementById('confirm-add-product');
+
+  const name = nameInput.value.trim();
+  const priceCents = parsePrice(priceInput.value);
+  const stockQuantity = parseInt(stockInput.value, 10) || 0;
+
+  if (!name) { showToast('Name is required', 'error'); return; }
+  if (priceCents === null || priceCents <= 0) { showToast('Valid price required', 'error'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  try {
+    await adminRequest('/api/admin/product/create', { name, priceCents, stockQuantity });
+    showToast('Product added', 'success');
+    nameInput.value = '';
+    priceInput.value = '';
+    stockInput.value = '0';
+    document.getElementById('modal-add-product').classList.remove('show');
+    document.getElementById('products-container').dataset.loaded = '';
+    loadProducts();
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Add Product';
   }
 }
 
@@ -327,7 +376,7 @@ async function refreshTagsList() {
     }
     container.innerHTML = data.tags.map(t => `
       <span class="tag-chip ${t.isActive ? '' : 'inactive'}">
-        ${escapeHtml(t.rfidTagId)}
+        <span class="tag-name">${escapeHtml(t.rfidTagId)}</span>
         ${t.isActive ? `<button data-remove-tag="${t.id}" title="Deactivate">×</button>` : ''}
       </span>
     `).join('');
@@ -343,10 +392,8 @@ async function addTag() {
   const input = document.getElementById('new-tag-input');
   const btn = document.getElementById('add-tag-btn');
   const tag = input.value.trim().toUpperCase();
-  if (!tag) {
-    showToast('Enter a tag ID', 'error');
-    return;
-  }
+  if (!tag) { showToast('Enter a tag ID', 'error'); return; }
+
   btn.disabled = true;
   btn.textContent = 'Adding…';
   try {
@@ -357,7 +404,6 @@ async function addTag() {
     showToast(`Tag ${tag} added`, 'success');
     input.value = '';
     await refreshTagsList();
-    // Refresh the products list behind the modal so the count updates
     document.getElementById('products-container').dataset.loaded = '';
     await loadProducts();
   } catch (err) {
@@ -374,7 +420,6 @@ async function removeTag(tagId) {
     await adminRequest('/api/admin/tag/remove', { tagId });
     showToast('Tag deactivated', 'success');
     await refreshTagsList();
-    // Refresh products list behind the modal
     document.getElementById('products-container').dataset.loaded = '';
     await loadProducts();
   } catch (err) {
@@ -438,10 +483,7 @@ async function addStaff() {
   const name = nameInput.value.trim();
   const pin = pinInput.value.trim();
 
-  if (!name || !pin) {
-    showToast('Name and PIN required', 'error');
-    return;
-  }
+  if (!name || !pin) { showToast('Name and PIN required', 'error'); return; }
 
   btn.disabled = true;
   btn.textContent = 'Adding…';
@@ -506,6 +548,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('reload-alerts-btn').addEventListener('click', loadAlerts);
   document.getElementById('resolve-all-btn').addEventListener('click', resolveAllAlerts);
+  document.getElementById('toggle-resolved-btn').addEventListener('click', () => {
+    showingResolvedAlerts = !showingResolvedAlerts;
+    loadAlerts();
+  });
+
   document.getElementById('reload-products-btn').addEventListener('click', () => {
     document.getElementById('products-container').dataset.loaded = '';
     loadProducts();
@@ -523,12 +570,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('confirm-add-staff').addEventListener('click', addStaff);
 
+  document.getElementById('add-product-btn').addEventListener('click', () => {
+    document.getElementById('modal-add-product').classList.add('show');
+  });
+  document.getElementById('cancel-add-product').addEventListener('click', () => {
+    document.getElementById('modal-add-product').classList.remove('show');
+  });
+  document.getElementById('confirm-add-product').addEventListener('click', addProduct);
+
   document.getElementById('close-tags-modal').addEventListener('click', () => {
     document.getElementById('modal-tags').classList.remove('show');
   });
   document.getElementById('add-tag-btn').addEventListener('click', addTag);
 
-  // Auto-restore session
   if (adminPin && staffName) {
     enterAdmin();
   }

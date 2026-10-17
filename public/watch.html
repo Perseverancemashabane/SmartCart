@@ -409,7 +409,6 @@
     </div>
   </div>
 
-  <!-- SCANNED ITEMS SECTION (rebuilt by poll) -->
   <div class="container">
     <div class="section">
       <div class="section-header">
@@ -428,7 +427,6 @@
     </div>
   </div>
 
-  <!-- SHOPPING LIST SECTION (rebuilt by poll, but the ADD FORM below it is permanent) -->
   <div class="container" style="padding-top: 0;">
     <div class="section">
       <div class="section-header">
@@ -445,7 +443,7 @@
         </div>
       </div>
 
-      <!-- THIS FORM IS PERMANENT — never touched by polling -->
+      <!-- PERMANENT ADD ITEM FORM -->
       <div class="add-item-row">
         <input type="text" id="new-item-input" placeholder="Add item…" maxlength="100" />
         <button id="add-item-btn">Add</button>
@@ -535,7 +533,7 @@
     }
 
     function render() {
-      // ---- Cart / shopper bar ----
+      // Cart / shopper bar
       if (!currentCart) {
         document.getElementById('shopper-bar').style.display = 'none';
         document.getElementById('cart-badge').style.display = 'none';
@@ -550,7 +548,7 @@
         document.getElementById('total-amount').textContent = totalRands;
       }
 
-      // ---- Scanned items list ----
+      // Scanned items list
       const scannedList = document.getElementById('scanned-list');
       const scannedCount = document.getElementById('scanned-count');
 
@@ -608,7 +606,7 @@
         });
       }
 
-      // ---- Shopping list rows ----
+      // Shopping list rows
       const listRows = document.getElementById('list-rows');
       const listCount = document.getElementById('list-count');
 
@@ -640,8 +638,6 @@
           btn.addEventListener('click', () => handleRemoveListItem(btn));
         });
       }
-      // NOTE: #new-item-input and #add-item-btn are NOT touched by render().
-      // They live in the HTML permanently. Polling CANNOT wipe them.
     }
 
     async function handleMarkItem(btn) {
@@ -691,7 +687,8 @@
 
       btn.disabled = true;
       try {
-        const res = await fetch(`${API}/api/watcher/list/add`, {
+        // CHANGED: Points to the official shopping-list endpoint
+        const res = await fetch(`${API}/api/shopping-list/add-item`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -737,7 +734,7 @@
       }
     }
 
-    // Wire up the PERMANENT form (runs once, never touched by polling)
+    // Wire up permanent form
     document.getElementById('add-item-btn').addEventListener('click', handleAddListItem);
     document.getElementById('new-item-input').addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {

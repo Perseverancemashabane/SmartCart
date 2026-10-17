@@ -8,8 +8,13 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   try {
     // 1. Authenticate using your exact working helper
-    const customer = await getSessionFromCookies();
-    if (!customer) {
+    // (Passing req in case the helper needs it to read headers/cookies)
+    const sessionOrCustomer = await getSessionFromCookies(req);
+    
+    // Handle cases where the helper returns { customer } or just the customer directly
+    const customer = sessionOrCustomer?.customer || sessionOrCustomer;
+
+    if (!customer || !customer.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

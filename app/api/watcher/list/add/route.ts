@@ -1,28 +1,17 @@
 // app/api/watcher/list/add/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { getCustomer } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-const prisma = globalForPrisma.prisma ?? new PrismaClient();
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
-
 export async function POST(req: NextRequest) {
   try {
-    const cookie = req.cookies.get("smartcart_session")?.value;
-    if (!cookie) {
+    // 1. Use your existing auth helper instead of guessing the session table name
+    const customer = await getCustomer(req);
+    if (!customer) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    const session = await (prisma as any).session.findUnique({
-      where: { token: cookie },
-      include: { customer: true },
-    });
-    if (!session || !session.customer) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const customer = session.customer;
 
     const body = await req.json().catch(() => ({} as any));
     const name = String(body.name ?? "").trim();
@@ -32,21 +21,20 @@ export async function POST(req: NextRequest) {
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
-    if (name.length > 100) {
-      return NextResponse.json({ error: "Name too long" }, { status: 400 });
-    }
 
-    let list = await (prisma as any).shoppingList.findFirst({
+    // 2. Find or create the active ShoppingList
+    let list = await prisma.shoppingList.findFirst({
       where: { customerId: customer.id, isActive: true },
     });
 
     if (!list) {
-      list = await (prisma as any).shoppingList.create({
+      list = await prisma.shoppingList.create({
         data: { customerId: customer.id, isActive: true },
       });
     }
 
-    const item = await (prisma as any).shoppingListItem.create({
+    // 3. Create the item
+    const item = await prisma.shoppingListItem.create({
       data: {
         listId: list.id,
         name,
@@ -56,7 +44,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true, item });
-  } catch (err) {
+  } catch (err: any) {
     console.error("[watcher/list/add] failed:", err);
     return NextResponse.json(
       { error: "Failed to add item", detail: String(err) },

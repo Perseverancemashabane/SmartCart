@@ -15,7 +15,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Resolve the customer from the session token
     const session = await (prisma as any).session.findUnique({
       where: { token: cookie },
       include: { customer: true },
@@ -37,7 +36,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Name too long" }, { status: 400 });
     }
 
-    // Find or create the active shopping list for this customer
     let list = await (prisma as any).shoppingList.findFirst({
       where: { customerId: customer.id, isActive: true },
     });
@@ -48,7 +46,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Create the list item
     const item = await (prisma as any).shoppingListItem.create({
       data: {
         listId: list.id,

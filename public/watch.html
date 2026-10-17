@@ -409,10 +409,47 @@
     </div>
   </div>
 
-  <div class="container" id="main-container">
-    <div class="loading" id="loading-state">
-      <div class="loading-spinner"></div>
-      <div>Loading cart...</div>
+  <!-- SCANNED ITEMS SECTION (rebuilt by poll) -->
+  <div class="container">
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="icon">📦</span>
+          <span>Scanned Items</span>
+        </div>
+        <span class="count-badge" id="scanned-count">0 items</span>
+      </div>
+      <div id="scanned-list">
+        <div class="loading" id="scanned-loading">
+          <div class="loading-spinner"></div>
+          <div>Loading cart...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SHOPPING LIST SECTION (rebuilt by poll, but the ADD FORM below it is permanent) -->
+  <div class="container" style="padding-top: 0;">
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="icon">📝</span>
+          <span>Shopping List</span>
+        </div>
+        <span class="count-badge" id="list-count"></span>
+      </div>
+      <div id="list-rows">
+        <div class="empty">
+          <div class="empty-icon">📝</div>
+          <div>No items on the list</div>
+        </div>
+      </div>
+
+      <!-- THIS FORM IS PERMANENT — never touched by polling -->
+      <div class="add-item-row">
+        <input type="text" id="new-item-input" placeholder="Add item…" maxlength="100" />
+        <button id="add-item-btn">Add</button>
+      </div>
     </div>
   </div>
 
@@ -420,6 +457,11 @@
 
   <script>
     const API = window.location.origin;
+
+    let currentCart = null;
+    let currentList = null;
+    let currentCustomer = null;
+    let lastPollError = false;
 
     async function checkAuth() {
       try {
@@ -436,11 +478,6 @@
       }
     }
 
-    let currentCart = null;
-    let currentList = null;
-    let currentCustomer = null;
-    let lastPollError = false;
-
     function showToast(message, type = 'info') {
       const container = document.getElementById('toast-container');
       const toast = document.createElement('div');
@@ -452,6 +489,12 @@
         toast.style.transition = 'opacity 0.3s';
         setTimeout(() => toast.remove(), 300);
       }, 2500);
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
     }
 
     async function pollState() {
@@ -492,54 +535,45 @@
     }
 
     function render() {
-      const container = document.getElementById('main-container');
-
-      const oldInput = document.getElementById('new-item-input');
-      const savedInputValue = oldInput ? oldInput.value : '';
-      const hadFocus = oldInput && document.activeElement === oldInput;
-
+      // ---- Cart / shopper bar ----
       if (!currentCart) {
         document.getElementById('shopper-bar').style.display = 'none';
         document.getElementById('cart-badge').style.display = 'none';
-        container.innerHTML = `
+      } else {
+        document.getElementById('shopper-bar').style.display = 'flex';
+        document.getElementById('cart-badge').style.display = 'inline-block';
+        document.getElementById('cart-badge').textContent =
+          `Cart #${currentCart.cartId.replace(/^cart_/i, '')}`;
+        document.getElementById('shopper-name').textContent =
+          currentCustomer?.name || currentCustomer?.phoneNumber || '—';
+        const totalRands = ((currentCart.totalCents || 0) / 100).toFixed(2);
+        document.getElementById('total-amount').textContent = totalRands;
+      }
+
+      // ---- Scanned items list ----
+      const scannedList = document.getElementById('scanned-list');
+      const scannedCount = document.getElementById('scanned-count');
+
+      if (!currentCart) {
+        scannedCount.textContent = '0 items';
+        scannedList.innerHTML = `
           <div class="no-cart">
             <div class="no-cart-icon">🛒</div>
             <h2>No active cart</h2>
             <p>Waiting for the shopper to pair a cart.<br>This page updates automatically.</p>
           </div>
         `;
-        return;
-      }
-
-      document.getElementById('shopper-bar').style.display = 'flex';
-      document.getElementById('cart-badge').style.display = 'inline-block';
-      document.getElementById('cart-badge').textContent = `Cart #${currentCart.cartId.replace(/^cart_/i, '')}`;
-      document.getElementById('shopper-name').textContent = currentCustomer?.name || currentCustomer?.phoneNumber || '—';
-      const totalRands = ((currentCart.totalCents || 0) / 100).toFixed(2);
-      document.getElementById('total-amount').textContent = totalRands;
-
-      let html = '';
-
-      html += `
-        <div class="section">
-          <div class="section-header">
-            <div class="section-title">
-              <span class="icon">📦</span>
-              <span>Scanned Items</span>
-            </div>
-            <span class="count-badge">${currentCart.items.length} item${currentCart.items.length === 1 ? '' : 's'}</span>
-          </div>
-      `;
-
-      if (currentCart.items.length === 0) {
-        html += `
+      } else if (currentCart.items.length === 0) {
+        scannedCount.textContent = '0 items';
+        scannedList.innerHTML = `
           <div class="empty">
             <div class="empty-icon">🛒</div>
             <div>No items scanned yet</div>
           </div>
         `;
       } else {
-        html += '<div class="item-list">';
+        scannedCount.textContent = `${currentCart.items.length} item${currentCart.items.length === 1 ? '' : 's'}`;
+        let html = '<div class="item-list">';
         currentCart.items.forEach(item => {
           const priceRands = ((item.unitPriceCents || 0) / 100).toFixed(2);
           const confirmed = item.confirmedByWatcher;
@@ -558,34 +592,29 @@
               </div>
               <div class="item-actions">
                 <button class="btn-icon confirm ${confirmed ? 'active' : ''}"
-                        data-action="confirm"
-                        data-item-id="${item.id}"
+                        data-action="confirm" data-item-id="${item.id}"
                         title="Mark as confirmed">✓</button>
                 <button class="btn-icon remove ${removeReq ? 'active' : ''}"
-                        data-action="request-remove"
-                        data-item-id="${item.id}"
+                        data-action="request-remove" data-item-id="${item.id}"
                         title="${removeReq ? 'Remove request sent' : 'Request removal'}">✗</button>
               </div>
             </div>
           `;
         });
         html += '</div>';
+        scannedList.innerHTML = html;
+        scannedList.querySelectorAll('.btn-icon').forEach(btn => {
+          btn.addEventListener('click', () => handleMarkItem(btn));
+        });
       }
-      html += '</div>';
 
-      html += `
-        <div class="section">
-          <div class="section-header">
-            <div class="section-title">
-              <span class="icon">📝</span>
-              <span>Shopping List</span>
-            </div>
-            ${currentList ? `<span class="count-badge">${currentList.progress.found}/${currentList.progress.total}</span>` : ''}
-          </div>
-      `;
+      // ---- Shopping list rows ----
+      const listRows = document.getElementById('list-rows');
+      const listCount = document.getElementById('list-count');
 
       if (!currentList || currentList.items.length === 0) {
-        html += `
+        listCount.textContent = '';
+        listRows.innerHTML = `
           <div class="empty">
             <div class="empty-icon">📝</div>
             <div>No items on the list</div>
@@ -593,7 +622,8 @@
           </div>
         `;
       } else {
-        html += '<div class="item-list">';
+        listCount.textContent = `${currentList.progress.found}/${currentList.progress.total}`;
+        let html = '<div class="item-list">';
         currentList.items.forEach(item => {
           html += `
             <div class="list-row ${item.isScanned ? 'scanned' : ''}" data-list-item-id="${item.id}">
@@ -605,46 +635,13 @@
           `;
         });
         html += '</div>';
-      }
-
-      html += `
-        <div class="add-item-row">
-          <input type="text" id="new-item-input" placeholder="Add item…" maxlength="100" />
-          <button id="add-item-btn">Add</button>
-        </div>
-      `;
-      html += '</div>';
-
-      container.innerHTML = html;
-
-      container.querySelectorAll('.btn-icon').forEach(btn => {
-        btn.addEventListener('click', () => handleMarkItem(btn));
-      });
-      container.querySelectorAll('.list-remove').forEach(btn => {
-        btn.addEventListener('click', () => handleRemoveListItem(btn));
-      });
-      const addBtn = document.getElementById('add-item-btn');
-      const addInput = document.getElementById('new-item-input');
-      if (addBtn && addInput) {
-        addBtn.addEventListener('click', () => handleAddListItem(addInput));
-        addInput.addEventListener('keypress', (e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            handleAddListItem(addInput);
-          }
+        listRows.innerHTML = html;
+        listRows.querySelectorAll('.list-remove').forEach(btn => {
+          btn.addEventListener('click', () => handleRemoveListItem(btn));
         });
-        addInput.value = savedInputValue;
-        if (hadFocus) {
-          addInput.focus();
-          addInput.setSelectionRange(savedInputValue.length, savedInputValue.length);
-        }
       }
-    }
-
-    function escapeHtml(str) {
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
+      // NOTE: #new-item-input and #add-item-btn are NOT touched by render().
+      // They live in the HTML permanently. Polling CANNOT wipe them.
     }
 
     async function handleMarkItem(btn) {
@@ -686,10 +683,12 @@
       }
     }
 
-    async function handleAddListItem(input) {
+    async function handleAddListItem() {
+      const input = document.getElementById('new-item-input');
+      const btn = document.getElementById('add-item-btn');
       const val = input.value.trim();
       if (!val) return;
-      const btn = document.getElementById('add-item-btn');
+
       btn.disabled = true;
       try {
         const res = await fetch(`${API}/api/watcher/list/add`, {
@@ -738,12 +737,18 @@
       }
     }
 
+    // Wire up the PERMANENT form (runs once, never touched by polling)
+    document.getElementById('add-item-btn').addEventListener('click', handleAddListItem);
+    document.getElementById('new-item-input').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleAddListItem();
+      }
+    });
+
     document.getElementById('logout-btn').addEventListener('click', async () => {
       try {
-        await fetch(`${API}/api/auth/logout`, {
-          method: 'POST',
-          credentials: 'include',
-        });
+        await fetch(`${API}/api/auth/logout`, { method: 'POST', credentials: 'include' });
       } catch (e) { /* ignore */ }
       window.location.href = '/login.html';
     });

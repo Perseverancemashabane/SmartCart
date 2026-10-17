@@ -262,10 +262,15 @@
       border-radius: 6px;
     }
     .list-remove:hover { color: #ef4444; background: rgba(239,68,68,0.1); }
+    
+    /* AUTOCOMPLETE SEARCH */
+    .search-wrapper {
+      position: relative;
+      margin-top: 12px;
+    }
     .add-item-row {
       display: flex;
       gap: 8px;
-      margin-top: 12px;
     }
     .add-item-row input {
       flex: 1;
@@ -290,40 +295,48 @@
       white-space: nowrap;
     }
     .add-item-row button:hover { background: #2563eb; }
-    .add-item-row button:disabled {
-      background: #475569;
-      cursor: not-allowed;
+    .add-item-row button:disabled { background: #475569; cursor: not-allowed; }
+    
+    /* DROPDOWN */
+    .autocomplete-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      margin-top: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 50;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      display: none;
     }
-    .empty {
-      text-align: center;
-      padding: 30px 20px;
-      color: #64748b;
-      font-size: 0.9rem;
-    }
-    .empty-icon {
-      font-size: 2.5rem;
-      margin-bottom: 8px;
-      opacity: 0.5;
-    }
-    .toast-container {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
+    .autocomplete-dropdown.active { display: block; }
+    .autocomplete-item {
+      padding: 10px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid #334155;
       display: flex;
-      flex-direction: column;
-      gap: 8px;
-      z-index: 100;
-      pointer-events: none;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item:hover { background: #334155; }
+    .autocomplete-name { font-weight: 600; color: #f8fafc; }
+    .autocomplete-price { font-size: 0.8rem; color: #4ade80; }
+    .autocomplete-empty { padding: 14px; text-align: center; color: #64748b; font-size: 0.85rem; }
+
+    .empty { text-align: center; padding: 30px 20px; color: #64748b; font-size: 0.9rem; }
+    .empty-icon { font-size: 2.5rem; margin-bottom: 8px; opacity: 0.5; }
+    .toast-container {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      display: flex; flex-direction: column; gap: 8px; z-index: 100; pointer-events: none;
     }
     .toast {
-      padding: 10px 18px;
-      background: #1e293b;
-      border-radius: 10px;
-      font-size: 0.85rem;
-      color: #f8fafc;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-      border-left: 3px solid #3b82f6;
+      padding: 10px 18px; background: #1e293b; border-radius: 10px; font-size: 0.85rem;
+      color: #f8fafc; box-shadow: 0 6px 20px rgba(0,0,0,0.4); border-left: 3px solid #3b82f6;
       animation: slideUp 0.3s ease-out;
     }
     .toast.success { border-left-color: #10b981; }
@@ -332,51 +345,20 @@
       from { opacity: 0; transform: translateY(20px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    .loading {
-      text-align: center;
-      padding: 60px 20px;
-      color: #64748b;
-    }
+    .loading { text-align: center; padding: 60px 20px; color: #64748b; }
     .loading-spinner {
-      display: inline-block;
-      width: 40px;
-      height: 40px;
-      border: 3px solid #334155;
-      border-top-color: #3b82f6;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-bottom: 16px;
+      display: inline-block; width: 40px; height: 40px; border: 3px solid #334155;
+      border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .no-cart {
-      text-align: center;
-      padding: 60px 20px;
-    }
-    .no-cart-icon {
-      font-size: 3rem;
-      margin-bottom: 12px;
-      opacity: 0.4;
-    }
-    .no-cart h2 {
-      font-size: 1.2rem;
-      margin-bottom: 8px;
-      color: #cbd5e1;
-    }
-    .no-cart p {
-      color: #64748b;
-      font-size: 0.9rem;
-      line-height: 1.5;
-    }
+    .no-cart { text-align: center; padding: 60px 20px; }
+    .no-cart-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.4; }
+    .no-cart h2 { font-size: 1.2rem; margin-bottom: 8px; color: #cbd5e1; }
+    .no-cart p { color: #64748b; font-size: 0.9rem; line-height: 1.5; }
     .logout-btn {
-      padding: 6px 12px;
-      background: rgba(248,113,113,0.15);
-      color: #f87171;
-      border: 1px solid rgba(248,113,113,0.3);
-      border-radius: 20px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
+      padding: 6px 12px; background: rgba(248,113,113,0.15); color: #f87171;
+      border: 1px solid rgba(248,113,113,0.3); border-radius: 20px; font-size: 0.8rem;
+      font-weight: 600; cursor: pointer; font-family: inherit;
     }
     .logout-btn:hover { background: rgba(248,113,113,0.25); }
   </style>
@@ -443,10 +425,15 @@
         </div>
       </div>
 
-      <div class="add-item-row">
-        <input type="text" id="new-item-input" placeholder="Add item…" maxlength="100" />
-        <button id="add-item-btn">Add</button>
+      <!-- SEARCH AND AUTOCOMPLETE -->
+      <div class="search-wrapper">
+        <div class="add-item-row">
+          <input type="text" id="new-item-input" placeholder="Search store products…" maxlength="100" autocomplete="off" />
+          <button id="add-item-btn" disabled>Add</button>
+        </div>
+        <div class="autocomplete-dropdown" id="autocomplete-dropdown"></div>
       </div>
+      
     </div>
   </div>
 
@@ -459,6 +446,10 @@
     let currentList = null;
     let currentCustomer = null;
     let lastPollError = false;
+    
+    // Search state
+    let allProducts = [];
+    let selectedProduct = null;
 
     async function checkAuth() {
       try {
@@ -494,6 +485,121 @@
       return div.innerHTML;
     }
 
+    // --- LOAD PRODUCTS FOR SEARCH ---
+    async function loadProducts() {
+      try {
+        const res = await fetch(`${API}/api/products/list`);
+        const data = await res.json();
+        if (data.success && data.products) {
+          allProducts = data.products;
+        }
+      } catch (err) {
+        console.error('Failed to load products for search', err);
+      }
+    }
+
+    // --- SEARCH INPUT HANDLERS ---
+    const searchInput = document.getElementById('new-item-input');
+    const dropdown = document.getElementById('autocomplete-dropdown');
+    const addBtn = document.getElementById('add-item-btn');
+
+    searchInput.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase().trim();
+      selectedProduct = null;
+      addBtn.disabled = true;
+      dropdown.innerHTML = '';
+      
+      if (!query) {
+        dropdown.classList.remove('active');
+        return;
+      }
+
+      const matches = allProducts.filter(p => 
+        p.name.toLowerCase().includes(query) || 
+        (p.tags && p.tags.some(t => t.toLowerCase().includes(query)))
+      ).slice(0, 8); // limit to 8 results
+
+      if (matches.length === 0) {
+        dropdown.innerHTML = `<div class="autocomplete-empty">No products found in store inventory</div>`;
+        dropdown.classList.add('active');
+        return;
+      }
+
+      matches.forEach(prod => {
+        const priceRands = ((prod.priceCents || 0) / 100).toFixed(2);
+        const div = document.createElement('div');
+        div.className = 'autocomplete-item';
+        div.innerHTML = `
+          <div class="autocomplete-name">${escapeHtml(prod.name)}</div>
+          <div class="autocomplete-price">R${priceRands}</div>
+        `;
+        div.addEventListener('click', () => {
+          searchInput.value = prod.name;
+          selectedProduct = prod;
+          dropdown.classList.remove('active');
+          addBtn.disabled = false;
+          addBtn.focus();
+        });
+        dropdown.appendChild(div);
+      });
+      dropdown.classList.add('active');
+    });
+
+    // Hide dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.search-wrapper')) {
+        dropdown.classList.remove('active');
+      }
+    });
+
+    // --- ADD TO LIST ---
+    async function handleAddListItem() {
+      if (!selectedProduct) return;
+      
+      const val = selectedProduct.name;
+      addBtn.disabled = true;
+      addBtn.textContent = '⏳';
+
+      try {
+        const res = await fetch(`${API}/api/shopping-list/add-item`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ 
+            productId: selectedProduct.id, // Send the REAL DB product ID
+            quantity: 1 
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || 'Could not add item', 'error');
+          return;
+        }
+        showToast(`Added: ${val}`, 'success');
+        
+        // Reset search state
+        searchInput.value = '';
+        selectedProduct = null;
+        addBtn.textContent = 'Add';
+        addBtn.disabled = true;
+        
+        pollState();
+      } catch (err) {
+        showToast('Network error', 'error');
+      } finally {
+        addBtn.textContent = 'Add';
+      }
+    }
+
+    addBtn.addEventListener('click', handleAddListItem);
+    searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && selectedProduct) {
+        e.preventDefault();
+        handleAddListItem();
+      }
+    });
+
+    // --- MAIN POLLING & RENDER ---
     async function pollState() {
       try {
         const res = await fetch(`${API}/api/watcher/state`, {
@@ -612,7 +718,7 @@
           <div class="empty">
             <div class="empty-icon">📝</div>
             <div>No items on the list</div>
-            <div style="font-size: 0.8rem; margin-top: 4px;">Add items below to share with the shopper</div>
+            <div style="font-size: 0.8rem; margin-top: 4px;">Search above to add items</div>
           </div>
         `;
       } else {
@@ -675,36 +781,6 @@
       }
     }
 
-    async function handleAddListItem() {
-      const input = document.getElementById('new-item-input');
-      const btn = document.getElementById('add-item-btn');
-      const val = input.value.trim();
-      if (!val) return;
-
-      btn.disabled = true;
-      try {
-        const res = await fetch(`${API}/api/shopping-list/add-item`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          // CHANGED: Using customName instead of name
-          body: JSON.stringify({ customName: val, quantity: 1 }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          showToast(data.error || 'Could not add item', 'error');
-          return;
-        }
-        showToast(`Added: ${val}`, 'success');
-        input.value = '';
-        pollState();
-      } catch (err) {
-        showToast('Network error', 'error');
-      } finally {
-        btn.disabled = false;
-      }
-    }
-
     async function handleRemoveListItem(btn) {
       const itemId = parseInt(btn.dataset.itemId, 10);
       if (!itemId) return;
@@ -730,14 +806,6 @@
       }
     }
 
-    document.getElementById('add-item-btn').addEventListener('click', handleAddListItem);
-    document.getElementById('new-item-input').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleAddListItem();
-      }
-    });
-
     document.getElementById('logout-btn').addEventListener('click', async () => {
       try {
         await fetch(`${API}/api/auth/logout`, { method: 'POST', credentials: 'include' });
@@ -748,6 +816,8 @@
     (async () => {
       currentCustomer = await checkAuth();
       if (!currentCustomer) return;
+      
+      await loadProducts(); // Fetch product catalog for search
       await pollState();
       setInterval(pollState, 2000);
     })();

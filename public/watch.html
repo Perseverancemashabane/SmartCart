@@ -443,7 +443,6 @@
         </div>
       </div>
 
-      <!-- PERMANENT ADD ITEM FORM -->
       <div class="add-item-row">
         <input type="text" id="new-item-input" placeholder="Add item…" maxlength="100" />
         <button id="add-item-btn">Add</button>
@@ -533,7 +532,6 @@
     }
 
     function render() {
-      // Cart / shopper bar
       if (!currentCart) {
         document.getElementById('shopper-bar').style.display = 'none';
         document.getElementById('cart-badge').style.display = 'none';
@@ -548,7 +546,6 @@
         document.getElementById('total-amount').textContent = totalRands;
       }
 
-      // Scanned items list
       const scannedList = document.getElementById('scanned-list');
       const scannedCount = document.getElementById('scanned-count');
 
@@ -606,7 +603,6 @@
         });
       }
 
-      // Shopping list rows
       const listRows = document.getElementById('list-rows');
       const listCount = document.getElementById('list-count');
 
@@ -687,12 +683,12 @@
 
       btn.disabled = true;
       try {
-        // CHANGED: Points to the official shopping-list endpoint
         const res = await fetch(`${API}/api/shopping-list/add-item`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ name: val, quantity: 1 }),
+          // CHANGED: Using customName instead of name
+          body: JSON.stringify({ customName: val, quantity: 1 }),
         });
         const data = await res.json();
         if (!res.ok) {
@@ -734,7 +730,6 @@
       }
     }
 
-    // Wire up permanent form
     document.getElementById('add-item-btn').addEventListener('click', handleAddListItem);
     document.getElementById('new-item-input').addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {

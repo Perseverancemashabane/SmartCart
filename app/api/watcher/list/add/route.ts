@@ -1,21 +1,19 @@
 // app/api/watcher/list/add/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-// 👇 PASTE THE EXACT IMPORT LINE FROM YOUR state/route.ts HERE 👇
-import { getCustomer } from "@/lib/auth"; 
+import { getSessionFromCookies } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
-    // 👇 USE THE EXACT SAME AUTH FUNCTION YOUR WORKING ROUTE USES 👇
-    // (If your working route uses something other than getCustomer(req), change it here)
-    const customer = await getCustomer(req); 
-    
+    // 1. Authenticate using your exact working helper
+    const customer = await getSessionFromCookies();
     if (!customer) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // 2. Parse body
     const body = await req.json().catch(() => ({} as any));
     const name = String(body.name ?? "").trim();
     const qtyParsed = parseInt(body.quantity, 10);
@@ -25,7 +23,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    // 1. Find or create the active list for THIS customer
+    // 3. Find or create the active ShoppingList for this customer
     let list = await prisma.shoppingList.findFirst({
       where: { customerId: customer.id, isActive: true },
     });
@@ -36,7 +34,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 2. Create the item
+    // 4. Create the list item
     const item = await prisma.shoppingListItem.create({
       data: {
         listId: list.id,

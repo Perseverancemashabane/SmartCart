@@ -1,17 +1,36 @@
 // app/api/watcher/list/add/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { getCustomer } from "@/lib/auth";
+import { PrismaClient } from "@prisma/client";
 
 export const runtime = "nodejs";
 
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+const prisma = globalForPrisma.prisma ?? new PrismaClient();
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
 export async function POST(req: NextRequest) {
   try {
-    // 1. Use your existing auth helper instead of guessing the session table name
-    const customer = await getCustomer(req);
-    if (!customer) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const cookie = req.cookies.get("smartcart_session")?.value;
+    if (!cookie) {
+      return NextResponse.json({ error: "Unauthorized - No cookie" }, { status: 401 });
     }
+
+    // Try both Capital S and lowercase s, just in case
+    const sessionModel = (prisma as any).session || (prisma as any).Session;
+    
+    if (!sessionModel) {
+      throw new Error("Prisma Client could not find a 'Session' or 'session' model. Please check your schema.prisma.");
+    }
+
+    const session = await sessionModel.findUnique({
+      where: { token: cookie },
+      include: { customer: true },
+    });
+
+    if (!session || !session.customer) {
+      return NextResponse.json({ error: "Unauthorized - Invalid session" }, { status: 401 });
+    }
+    const customer = session.customer;
 
     const body = await req.json().catch(() => ({} as any));
     const name = String(body.name ?? "").trim();
@@ -22,19 +41,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    // 2. Find or create the active ShoppingList
-    let list = await prisma.shoppingList.findFirst({
+    // Find or create active list
+    let list = await (prisma as any).shoppingList.findFirst({
       where: { customerId: customer.id, isActive: true },
     });
 
     if (!list) {
-      list = await prisma.shoppingList.create({
+      list = await (prisma as any).shoppingList.create({
         data: { customerId: customer.id, isActive: true },
       });
     }
 
-    // 3. Create the item
-    const item = await prisma.shoppingListItem.create({
+    // Create item
+    const item = await (prisma as any).shoppingListItem.create({
       data: {
         listId: list.id,
         name,

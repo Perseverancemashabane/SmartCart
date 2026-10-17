@@ -1,112 +1,68 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { getSessionFromCookies } from '@/lib/auth';
+// app/api/watcher/list/add/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { PrismaClient } from "@prisma/client";
 
-/**
- * POST /api/watcher/list/add
- *
- * Body: { "name": "Bread", "quantity": 1 }
- *
- * Adds an item to the logged-in customer's active shopping list.
- * If the customer has no active list, one is created.
- *
- * The backend attempts to match the free-text name to a known product.
- * If a match is found, productId is set — which allows auto-checkoff
- * when the shopper scans that product's RFID tag.
- *
- * Requires the shopper's session cookie.
- */
-export async function POST(request: Request) {
+export const runtime = "nodejs";
+
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+const prisma = globalForPrisma.prisma ?? new PrismaClient();
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+export async function POST(req: NextRequest) {
   try {
-    // ============================================================
-    // 1. Require login
-    // ============================================================
-    const session = await getSessionFromCookies(request.headers.get('cookie'));
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
+    const cookie = req.cookies.get("smartcart_session")?.value;
+    if (!cookie) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { name, quantity } = body;
+    // Resolve the customer from the session token
+    const session = await (prisma as any).session.findUnique({
+      where: { token: cookie },
+      include: { customer: true },
+    });
+    if (!session || !session.customer) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const customer = session.customer;
 
-    if (!name || typeof name !== 'string' || name.trim().length === 0) {
-      return NextResponse.json(
-        { error: 'name is required' },
-        { status: 400 }
-      );
+    const body = await req.json().catch(() => ({} as any));
+    const name = String(body.name ?? "").trim();
+    const qtyParsed = parseInt(body.quantity, 10);
+    const quantity = Number.isFinite(qtyParsed) && qtyParsed > 0 ? qtyParsed : 1;
+
+    if (!name) {
+      return NextResponse.json({ error: "Name is required" }, { status: 400 });
+    }
+    if (name.length > 100) {
+      return NextResponse.json({ error: "Name too long" }, { status: 400 });
     }
 
-    const qty = Number.isInteger(quantity) && quantity > 0 ? quantity : 1;
-
-    // ============================================================
-    // 2. Find or create the active shopping list
-    // ============================================================
-    let list = await prisma.shoppingList.findFirst({
-      where: {
-        customerId: session.customerId,
-        isActive: true,
-      },
-      orderBy: { createdAt: 'desc' },
+    // Find or create the active shopping list for this customer
+    let list = await (prisma as any).shoppingList.findFirst({
+      where: { customerId: customer.id, isActive: true },
     });
 
     if (!list) {
-      list = await prisma.shoppingList.create({
-        data: {
-          customerId: session.customerId,
-          isActive: true,
-        },
+      list = await (prisma as any).shoppingList.create({
+        data: { customerId: customer.id, isActive: true },
       });
     }
 
-    // ============================================================
-    // 3. Try to match the free-text name to a known product
-    //    Case-insensitive partial match — takes the first result.
-    // ============================================================
-    const trimmed = name.trim();
-    const matchedProduct = await prisma.product.findFirst({
-      where: {
-        name: {
-          contains: trimmed,
-          mode: 'insensitive',
-        },
-      },
-    });
-
-    // ============================================================
-    // 4. Create the list item
-    // ============================================================
-    const listItem = await prisma.shoppingListItem.create({
+    // Create the list item
+    const item = await (prisma as any).shoppingListItem.create({
       data: {
         listId: list.id,
-        productId: matchedProduct?.id ?? null,
-        customName: matchedProduct ? null : trimmed,
-        quantity: qty,
+        name,
+        quantity,
         isScanned: false,
       },
-      include: { product: true },
     });
 
-    return NextResponse.json({
-      success: true,
-      message: `Added "${trimmed}" to your shopping list`,
-      listId: list.id,
-      item: {
-        id: listItem.id,
-        name: matchedProduct?.name ?? trimmed,
-        productId: matchedProduct?.id ?? null,
-        sku: matchedProduct?.rfidTagId ?? null,
-        quantity: listItem.quantity,
-        isScanned: listItem.isScanned,
-        matchedToProduct: !!matchedProduct,
-      },
-    });
-  } catch (error: any) {
-    console.error('Error in /api/watcher/list/add:', error);
+    return NextResponse.json({ success: true, item });
+  } catch (err) {
+    console.error("[watcher/list/add] failed:", err);
     return NextResponse.json(
-      { error: 'Internal Server Error', message: error.message },
+      { error: "Failed to add item", detail: String(err) },
       { status: 500 }
     );
   }

@@ -80,8 +80,6 @@
       font-weight: 600;
       color: #93c5fd;
     }
-
-    /* Shopper info bar */
     .shopper-bar {
       background: #0f172a;
       padding: 12px 20px;
@@ -108,13 +106,11 @@
       font-weight: 500;
       margin-right: 4px;
     }
-
     .container {
       max-width: 700px;
       margin: 0 auto;
       padding: 20px;
     }
-
     .section {
       background: #1e293b;
       border-radius: 16px;
@@ -146,8 +142,6 @@
       color: #cbd5e1;
       font-weight: 600;
     }
-
-    /* Item cards */
     .item-list {
       display: flex;
       flex-direction: column;
@@ -229,8 +223,6 @@
       cursor: not-allowed;
       transform: none;
     }
-
-    /* Shopping list rows */
     .list-row {
       display: flex;
       align-items: center;
@@ -270,8 +262,6 @@
       border-radius: 6px;
     }
     .list-remove:hover { color: #ef4444; background: rgba(239,68,68,0.1); }
-
-    /* Add item form */
     .add-item-row {
       display: flex;
       gap: 8px;
@@ -304,8 +294,6 @@
       background: #475569;
       cursor: not-allowed;
     }
-
-    /* Empty state */
     .empty {
       text-align: center;
       padding: 30px 20px;
@@ -317,8 +305,6 @@
       margin-bottom: 8px;
       opacity: 0.5;
     }
-
-    /* Toast */
     .toast-container {
       position: fixed;
       bottom: 20px;
@@ -346,8 +332,6 @@
       from { opacity: 0; transform: translateY(20px); }
       to { opacity: 1; transform: translateY(0); }
     }
-
-    /* Loading */
     .loading {
       text-align: center;
       padding: 60px 20px;
@@ -364,8 +348,6 @@
       margin-bottom: 16px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* No cart state */
     .no-cart {
       text-align: center;
       padding: 60px 20px;
@@ -385,7 +367,6 @@
       font-size: 0.9rem;
       line-height: 1.5;
     }
-
     .logout-btn {
       padding: 6px 12px;
       background: rgba(248,113,113,0.15);
@@ -429,7 +410,6 @@
   </div>
 
   <div class="container" id="main-container">
-    <!-- Loaded via JS -->
     <div class="loading" id="loading-state">
       <div class="loading-spinner"></div>
       <div>Loading cart...</div>
@@ -439,9 +419,6 @@
   <div class="toast-container" id="toast-container"></div>
 
   <script>
-    // ============================================================
-    // Auth check + redirect if not logged in
-    // ============================================================
     const API = window.location.origin;
 
     async function checkAuth() {
@@ -459,17 +436,11 @@
       }
     }
 
-    // ============================================================
-    // State
-    // ============================================================
     let currentCart = null;
     let currentList = null;
     let currentCustomer = null;
     let lastPollError = false;
 
-    // ============================================================
-    // Toast
-    // ============================================================
     function showToast(message, type = 'info') {
       const container = document.getElementById('toast-container');
       const toast = document.createElement('div');
@@ -483,9 +454,6 @@
       }, 2500);
     }
 
-    // ============================================================
-    // Polling
-    // ============================================================
     async function pollState() {
       try {
         const res = await fetch(`${API}/api/watcher/state`, {
@@ -494,21 +462,17 @@
           credentials: 'include',
           body: '{}',
         });
-
         if (res.status === 401) {
           window.location.href = '/login.html';
           return;
         }
-
         const data = await res.json();
         if (!data.success) return;
-
         lastPollError = false;
         updateLiveBadge();
         currentCart = data.cart;
         currentList = data.shoppingList;
         render();
-
       } catch (err) {
         lastPollError = true;
         updateLiveBadge();
@@ -527,13 +491,13 @@
       }
     }
 
-    // ============================================================
-    // Render
-    // ============================================================
     function render() {
       const container = document.getElementById('main-container');
 
-      // No cart yet
+      const oldInput = document.getElementById('new-item-input');
+      const savedInputValue = oldInput ? oldInput.value : '';
+      const hadFocus = oldInput && document.activeElement === oldInput;
+
       if (!currentCart) {
         document.getElementById('shopper-bar').style.display = 'none';
         document.getElementById('cart-badge').style.display = 'none';
@@ -547,7 +511,6 @@
         return;
       }
 
-      // Show shopper bar
       document.getElementById('shopper-bar').style.display = 'flex';
       document.getElementById('cart-badge').style.display = 'inline-block';
       document.getElementById('cart-badge').textContent = `Cart #${currentCart.cartId.replace(/^cart_/i, '')}`;
@@ -555,10 +518,8 @@
       const totalRands = ((currentCart.totalCents || 0) / 100).toFixed(2);
       document.getElementById('total-amount').textContent = totalRands;
 
-      // Cart items section
       let html = '';
 
-      // Scanned items
       html += `
         <div class="section">
           <div class="section-header">
@@ -599,15 +560,11 @@
                 <button class="btn-icon confirm ${confirmed ? 'active' : ''}"
                         data-action="confirm"
                         data-item-id="${item.id}"
-                        title="Mark as confirmed">
-                  ✓
-                </button>
+                        title="Mark as confirmed">✓</button>
                 <button class="btn-icon remove ${removeReq ? 'active' : ''}"
                         data-action="request-remove"
                         data-item-id="${item.id}"
-                        title="${removeReq ? 'Remove request sent' : 'Request removal'}">
-                  ✗
-                </button>
+                        title="${removeReq ? 'Remove request sent' : 'Request removal'}">✗</button>
               </div>
             </div>
           `;
@@ -616,7 +573,6 @@
       }
       html += '</div>';
 
-      // Shopping list section
       html += `
         <div class="section">
           <div class="section-header">
@@ -651,7 +607,6 @@
         html += '</div>';
       }
 
-      // Add item form
       html += `
         <div class="add-item-row">
           <input type="text" id="new-item-input" placeholder="Add item…" maxlength="100" />
@@ -662,7 +617,6 @@
 
       container.innerHTML = html;
 
-      // Wire up buttons
       container.querySelectorAll('.btn-icon').forEach(btn => {
         btn.addEventListener('click', () => handleMarkItem(btn));
       });
@@ -679,6 +633,11 @@
             handleAddListItem(addInput);
           }
         });
+        addInput.value = savedInputValue;
+        if (hadFocus) {
+          addInput.focus();
+          addInput.setSelectionRange(savedInputValue.length, savedInputValue.length);
+        }
       }
     }
 
@@ -688,20 +647,13 @@
       return div.innerHTML;
     }
 
-    // ============================================================
-    // Actions
-    // ============================================================
     async function handleMarkItem(btn) {
       const action = btn.dataset.action;
       const itemId = parseInt(btn.dataset.itemId, 10);
       if (!currentCart) return;
 
-      // Toggle: if already active, we're clearing
       let effectiveAction = action;
-      if (action === 'confirm' && btn.classList.contains('active')) {
-        // Currently we don't support un-confirm, so do nothing
-        return;
-      }
+      if (action === 'confirm' && btn.classList.contains('active')) return;
       if (action === 'request-remove' && btn.classList.contains('active')) {
         effectiveAction = 'clear-remove';
       }
@@ -737,7 +689,6 @@
     async function handleAddListItem(input) {
       const val = input.value.trim();
       if (!val) return;
-
       const btn = document.getElementById('add-item-btn');
       btn.disabled = true;
       try {
@@ -787,9 +738,6 @@
       }
     }
 
-    // ============================================================
-    // Logout
-    // ============================================================
     document.getElementById('logout-btn').addEventListener('click', async () => {
       try {
         await fetch(`${API}/api/auth/logout`, {
@@ -800,13 +748,9 @@
       window.location.href = '/login.html';
     });
 
-    // ============================================================
-    // Bootstrap
-    // ============================================================
     (async () => {
       currentCustomer = await checkAuth();
       if (!currentCustomer) return;
-
       await pollState();
       setInterval(pollState, 2000);
     })();

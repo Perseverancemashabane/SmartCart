@@ -1,252 +1,123 @@
-import { NextResponse } from 'next/server';
-import { cartEventsBus } from '@/lib/events';
-import { prisma } from '@/lib/prisma';
+// app/api/hardware/scan-item/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { PrismaClient } from "@prisma/client";
 
-export async function POST(request: Request) {
+export const runtime = "nodejs";
+
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+const prisma = globalForPrisma.prisma ?? new PrismaClient();
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json();
-    const { cart_id, rfid_tag, action = 'toggle' } = body;
+    const body = await req.json();
+    const { cart_id, rfid_tag, action } = body;
 
     if (!cart_id || !rfid_tag) {
-      return NextResponse.json({ error: 'cart_id and rfid_tag are required' }, { status: 400 });
+      return NextResponse.json({ error: "Missing cart_id or rfid_tag" }, { status: 400 });
     }
 
-    // ============================================================
-    // Look up tag in ProductTag → get product
-    // (supports multiple tags per product, e.g. many milk cartons)
-    // ============================================================
-    const productTag = await prisma.productTag.findUnique({
-      where: { rfidTagId: rfid_tag },
+    // 1. Find the product by RFID tag
+    const productTag = await (prisma as any).productTag.findFirst({
+      where: { tag: rfid_tag },
       include: { product: true },
     });
 
-    if (!productTag || !productTag.isActive) {
-      return NextResponse.json(
-        { error: `Product with RFID tag ${rfid_tag} not found` },
-        { status: 404 }
-      );
+    if (!productTag || !productTag.product) {
+      return NextResponse.json({ error: "Product not found for this tag" }, { status: 404 });
     }
 
     const product = productTag.product;
 
-    const session = await prisma.cartSession.findFirst({
-      where: { cartId: cart_id, isActive: true },
+    // 2. Find the active cart
+    const cart = await (prisma as any).cart.findFirst({
+      where: { cartCode: cart_id },
+      include: { items: true },
     });
 
-    if (!session) {
-      return NextResponse.json({ error: `No active session found for cart ${cart_id}` }, { status: 404 });
+    if (!cart) {
+      return NextResponse.json({ error: "Cart not found" }, { status: 404 });
     }
 
-    // Reject scans while cart is docked
-    if (session.isDocked) {
-      return NextResponse.json(
-        { error: 'Cart is docked at base station. Cannot scan new items.' },
-        { status: 403 }
-      );
-    }
+    // 3. Check if item is already in the cart
+    const existingItem = cart.items.find((i: any) => i.productId === product.id);
 
-    const existingItem = await prisma.cartItem.findUnique({
-      where: {
-        sessionId_productId: {
-          sessionId: session.id,
+    if (existingItem) {
+      // If action is "toggle" and they scan again, we remove it (and give stock back)
+      if (action === "toggle" || action === "remove") {
+        await (prisma as any).cartItem.delete({ where: { id: existingItem.id } });
+        
+        // Give stock back
+        await (prisma as any).product.update({
+          where: { id: product.id },
+          data: { stock: { increment: existingItem.quantity } },
+        });
+      } else {
+        // Increment quantity
+        await (prisma as any).cartItem.update({
+          where: { id: existingItem.id },
+          data: { quantity: { increment: 1 } },
+        });
+        
+        // Decrease stock
+        await (prisma as any).product.update({
+          where: { id: product.id },
+          data: { stock: { decrement: 1 } },
+        });
+      }
+    } else {
+      // 4. Item is not in cart, add it and decrease stock
+      if (product.stock <= 0) {
+        return NextResponse.json({ error: "Out of stock" }, { status: 400 });
+      }
+
+      await (prisma as any).cartItem.create({
+        data: {
+          cartId: cart.id,
           productId: product.id,
+          name: product.name,
+          unitPriceCents: product.priceCents,
+          quantity: 1,
         },
+      });
+
+      // Decrease stock
+      await (prisma as any).product.update({
+        where: { id: product.id },
+        data: { stock: { decrement: 1 } },
+      });
+    }
+
+    // 5. Recalculate Cart Totals
+    const updatedCart = await (prisma as any).cart.findUnique({
+      where: { id: cart.id },
+      include: { items: true },
+    });
+
+    const subtotalCents = updatedCart.items.reduce((sum: number, item: any) => sum + (item.unitPriceCents * item.quantity), 0);
+    const taxCents = Math.round(subtotalCents * 0.15); // Assuming 15% VAT, change if different
+    const totalCents = subtotalCents + taxCents;
+
+    await (prisma as any).cart.update({
+      where: { id: cart.id },
+      data: { subtotalCents, taxCents, totalCents },
+    });
+
+    // 6. Return the new session to the ESP32
+    return NextResponse.json({
+      success: true,
+      session: {
+        isDocked: updatedCart.isDocked,
+        paymentStatus: updatedCart.paymentStatus,
+        subtotalCents,
+        taxCents,
+        totalCents,
+        items: updatedCart.items.map((i: any) => ({ name: i.name, quantity: i.quantity })),
       },
     });
 
-    const currentQty = existingItem?.quantity ?? 0;
-    let actionTaken = 'none';
-
-    if (action === 'add') {
-      if (existingItem) {
-        const newQty = currentQty + 1;
-        await prisma.cartItem.update({
-          where: { id: existingItem.id },
-          data: {
-            quantity: newQty,
-            subtotalCents: newQty * product.priceCents,
-          },
-        });
-        actionTaken = 'incremented';
-      } else {
-        await prisma.cartItem.create({
-          data: {
-            sessionId: session.id,
-            productId: product.id,
-            quantity: 1,
-            unitPriceCents: product.priceCents,
-            subtotalCents: product.priceCents,
-          },
-        });
-        actionTaken = 'added';
-      }
-    } else if (action === 'remove') {
-      if (existingItem) {
-        if (currentQty > 1) {
-          const newQty = currentQty - 1;
-          await prisma.cartItem.update({
-            where: { id: existingItem.id },
-            data: {
-              quantity: newQty,
-              subtotalCents: newQty * product.priceCents,
-            },
-          });
-          actionTaken = 'decremented';
-        } else {
-          await prisma.cartItem.delete({ where: { id: existingItem.id } });
-          actionTaken = 'removed';
-        }
-      }
-    } else {
-      // Toggle: if exists, remove; if not, add
-      if (existingItem) {
-        await prisma.cartItem.delete({ where: { id: existingItem.id } });
-        actionTaken = 'removed';
-      } else {
-        await prisma.cartItem.create({
-          data: {
-            sessionId: session.id,
-            productId: product.id,
-            quantity: 1,
-            unitPriceCents: product.priceCents,
-            subtotalCents: product.priceCents,
-          },
-        });
-        actionTaken = 'added';
-      }
-    }
-
-    // ============================================================
-    // SHOPPING LIST AUTO-MARK
-    // ============================================================
-    let shoppingListUpdate: any = null;
-
-    if (session.customerId) {
-      try {
-        const activeList = await prisma.shoppingList.findFirst({
-          where: {
-            customerId: session.customerId,
-            isActive: true,
-          },
-          orderBy: { createdAt: 'desc' },
-        });
-
-        if (activeList) {
-          const listItem = await prisma.shoppingListItem.findFirst({
-            where: {
-              listId: activeList.id,
-              productId: product.id,
-            },
-          });
-
-          if (listItem) {
-            if (actionTaken === 'added' || actionTaken === 'incremented') {
-              if (!listItem.isScanned) {
-                const updated = await prisma.shoppingListItem.update({
-                  where: { id: listItem.id },
-                  data: {
-                    isScanned: true,
-                    scannedAt: new Date(),
-                  },
-                });
-                shoppingListUpdate = {
-                  itemId: updated.id,
-                  isScanned: true,
-                  action: 'marked_found',
-                };
-              }
-            } else if (
-              (actionTaken === 'removed' || actionTaken === 'decremented') &&
-              listItem.isScanned
-            ) {
-              if (actionTaken === 'removed') {
-                const updated = await prisma.shoppingListItem.update({
-                  where: { id: listItem.id },
-                  data: {
-                    isScanned: false,
-                    scannedAt: null,
-                  },
-                });
-                shoppingListUpdate = {
-                  itemId: updated.id,
-                  isScanned: false,
-                  action: 'unmarked',
-                };
-              }
-            }
-          }
-
-          const allListItems = await prisma.shoppingListItem.findMany({
-            where: { listId: activeList.id },
-          });
-          const total = allListItems.length;
-          const found = allListItems.filter(i => i.isScanned).length;
-
-          shoppingListUpdate = {
-            ...(shoppingListUpdate || {}),
-            listId: activeList.id,
-            progress: {
-              total,
-              found,
-              remaining: total - found,
-              progressPercent: total > 0 ? Math.round((found / total) * 100) : 0,
-            },
-          };
-        }
-      } catch (listErr) {
-        console.warn('[ShoppingList] auto-mark failed (non-fatal):', listErr);
-      }
-    }
-
-    // Recalculate totals
-    const allItems = await prisma.cartItem.findMany({
-      where: { sessionId: session.id },
-      include: { product: true },
-    });
-
-    const subtotalCents = allItems.reduce((acc, item) => acc + (item.subtotalCents ?? 0), 0);
-    const taxCents = Math.round(subtotalCents * 0.15);
-    const totalCents = subtotalCents + taxCents;
-
-    const updatedSession = await prisma.cartSession.update({
-      where: { id: session.id },
-      data: { subtotalCents, taxCents, totalCents },
-      include: { items: { include: { product: true } } },
-    });
-
-    const streamPayload = {
-      event: 'cart_updated',
-      cartId: cart_id,
-      sessionId: updatedSession.id,
-      isDocked: updatedSession.isDocked,
-      subtotalCents: updatedSession.subtotalCents,
-      taxCents: updatedSession.taxCents,
-      totalCents: updatedSession.totalCents,
-      items: updatedSession.items.map((i) => ({
-        id: i.id,
-        // Use product ID as a stable identifier, since tags may vary
-        sku: i.product.id.toString(),
-        name: i.product.name,
-        unitPriceCents: i.unitPriceCents,
-        quantity: i.quantity,
-        subtotalCents: i.subtotalCents,
-      })),
-      lastAction: { action: actionTaken, product: product.name, sku: rfid_tag },
-      shoppingList: shoppingListUpdate,
-    };
-
-    cartEventsBus.emit(`stream:${cart_id}`, streamPayload);
-
-    return NextResponse.json({
-      success: true,
-      cartId: cart_id,
-      session: streamPayload,
-    });
-  } catch (error: any) {
-    console.error('Error in /api/hardware/scan-item:', error);
-    return NextResponse.json(
-      { error: 'Internal Server Error', message: error.message },
-      { status: 500 }
-    );
+  } catch (err: any) {
+    console.error("[scan-item] failed:", err);
+    return NextResponse.json({ error: "Scan failed", detail: String(err) }, { status: 500 });
   }
 }

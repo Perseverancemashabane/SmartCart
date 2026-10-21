@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing cart_id or rfid_tag" }, { status: 400 });
     }
 
-    // 1. Find the product by RFID tag (USING CORRECT COLUMN NAME: rfidTagId)
+    // 1. Find the product by RFID tag
     const productTag = await (prisma as any).productTag.findFirst({
       where: { rfidTagId: rfid_tag }, 
       include: { product: true },
@@ -28,25 +28,27 @@ export async function POST(req: NextRequest) {
 
     const product = productTag.product;
 
-    // 2. Find the active cart
-    let cart = await (prisma as any).cart.findFirst({
-      where: { cartCode: cart_id },
-      include: { items: true },
+    // 2. Find the Cart using the correct `id` column
+    const cart = await (prisma as any).cart.findUnique({
+      where: { id: cart_id },
     });
-
-    if (!cart) {
-      cart = await (prisma as any).cart.findFirst({
-        where: { id: cart_id },
-        include: { items: true },
-      });
-    }
 
     if (!cart) {
       return NextResponse.json({ error: "Cart not found" }, { status: 404 });
     }
 
-    // 3. Check if item is already in the cart
-    const existingItem = cart.items.find((i: any) => i.productId === product.id);
+    // 3. Find the active session for this cart
+    let session = await (prisma as any).cartSession.findFirst({
+      where: { cartId: cart.id, isActive: true },
+      include: { items: true },
+    });
+
+    if (!session) {
+      return NextResponse.json({ error: "No active session for this cart" }, { status: 404 });
+    }
+
+    // 4. Check if item is already in the session
+    const existingItem = session.items.find((i: any) => i.productId === product.id);
 
     if (existingItem) {
       if (action === "toggle" || action === "remove") {
@@ -70,9 +72,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Out of stock" }, { status: 400 });
       }
 
+      // Add to CartItem (using sessionId based on the relation)
       await (prisma as any).cartItem.create({
         data: {
-          cartId: cart.id,
+          sessionId: session.id,
           productId: product.id,
           name: product.name,
           unitPriceCents: product.priceCents || 0,
@@ -86,30 +89,30 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 4. Recalculate Cart Totals
-    const updatedCart = await (prisma as any).cart.findUnique({
-      where: { id: cart.id },
+    // 5. Recalculate Session Totals
+    const updatedSession = await (prisma as any).cartSession.findUnique({
+      where: { id: session.id },
       include: { items: true },
     });
 
-    const subtotalCents = updatedCart.items.reduce((sum: number, item: any) => sum + ((item.unitPriceCents || 0) * item.quantity), 0);
+    const subtotalCents = updatedSession.items.reduce((sum: number, item: any) => sum + ((item.unitPriceCents || 0) * item.quantity), 0);
     const taxCents = Math.round(subtotalCents * 0.15);
     const totalCents = subtotalCents + taxCents;
 
-    await (prisma as any).cart.update({
-      where: { id: cart.id },
+    await (prisma as any).cartSession.update({
+      where: { id: session.id },
       data: { subtotalCents, taxCents, totalCents },
     });
 
     return NextResponse.json({
       success: true,
       session: {
-        isDocked: updatedCart.isDocked || false,
-        paymentStatus: updatedCart.paymentStatus || "unpaid",
+        isDocked: cart.status === "docked" || false,
+        paymentStatus: updatedSession.paymentStatus || "unpaid",
         subtotalCents,
         taxCents,
         totalCents,
-        items: updatedCart.items.map((i: any) => ({ name: i.name, quantity: i.quantity })),
+        items: updatedSession.items.map((i: any) => ({ name: i.name, quantity: i.quantity })),
       },
     });
 

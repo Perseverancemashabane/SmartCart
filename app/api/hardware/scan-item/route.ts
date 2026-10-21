@@ -12,10 +12,6 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { cart_id, rfid_tag, action } = body;
 
-    if (!cart_id || !rfid_tag) {
-      return NextResponse.json({ error: "Missing cart_id or rfid_tag" }, { status: 400 });
-    }
-
     // 1. Find the product by RFID tag
     const productTag = await (prisma as any).productTag.findFirst({
       where: { rfidTagId: rfid_tag }, 
@@ -28,102 +24,79 @@ export async function POST(req: NextRequest) {
 
     const product = productTag.product;
 
-    // 2. Find the Cart
-    const cart = await (prisma as any).cart.findUnique({
-      where: { id: cart_id },
-    });
-
-    if (!cart) {
-      return NextResponse.json({ error: "Cart not found" }, { status: 404 });
-    }
-
-    // 3. Find the active session
+    // 2. Find the Cart and Session
+    const cart = await (prisma as any).cart.findUnique({ where: { id: cart_id } });
     const session = await (prisma as any).cartSession.findFirst({
       where: { cartId: cart.id, isActive: true },
-      include: { items: { include: { product: true } } },
+      include: { items: true },
     });
 
-    if (!session) {
-      return NextResponse.json({ error: "No active session for this cart" }, { status: 404 });
-    }
+    if (!session) return NextResponse.json({ error: "No active session" }, { status: 404 });
 
-    // 4. Check if item is already in the session
     const existingItem = session.items.find((i: any) => i.productId === product.id);
 
-    if (existingItem) {
-      if (action === "toggle" || action === "remove") {
-        await (prisma as any).cartItem.delete({ where: { id: existingItem.id } });
-        await (prisma as any).product.update({
-          where: { id: product.id },
-          data: { stock: { increment: existingItem.quantity } },
-        });
-      } else {
-        const newQuantity = existingItem.quantity + 1;
-        const newSubtotal = newQuantity * (product.priceCents || 0);
-        
+    // 3. Create or Update the Cart Item
+    // We use a try/catch here specifically to catch the Prisma field error
+    try {
+      if (existingItem) {
         await (prisma as any).cartItem.update({
           where: { id: existingItem.id },
           data: { 
-            quantity: newQuantity,
-            subtotalCents: newSubtotal
+            quantity: { increment: 1 },
+            subtotalCents: { increment: (product.priceCents || 0) } 
           },
         });
-        await (prisma as any).product.update({
-          where: { id: product.id },
-          data: { stock: { decrement: 1 } },
+      } else {
+        await (prisma as any).cartItem.create({
+          data: {
+            sessionId: session.id,
+            productId: product.id,
+            // We removed unitPriceCents and name, let's see if it passes
+            quantity: 1,
+            subtotalCents: (product.priceCents || 0),
+          },
         });
       }
-    } else {
-      if (product.stock <= 0) {
-        return NextResponse.json({ error: "Out of stock" }, { status: 400 });
-      }
-
-      // FIX: Removed `name`. The database looks it up via the Product relation.
-      await (prisma as any).cartItem.create({
-        data: {
-          sessionId: session.id,
-          productId: product.id,
-          unitPriceCents: product.priceCents || 0,
-          quantity: 1,
-          subtotalCents: (product.priceCents || 0) * 1,
-        },
-      });
-
-      await (prisma as any).product.update({
-        where: { id: product.id },
-        data: { stock: { decrement: 1 } },
-      });
+    } catch (prismaError: any) {
+      // IF IT FAILS, RETURN THE EXACT PRISMA ERROR AS JSON
+      return NextResponse.json({ 
+        error: "Prisma Error on CartItem", 
+        detail: prismaError.message 
+      }, { status: 500 });
     }
 
-    // 5. Recalculate Session Totals
+    // 4. Update Stock
+    await (prisma as any).product.update({
+      where: { id: product.id },
+      data: { stock: { decrement: 1 } },
+    });
+
+    // 5. Calculate Totals based on the items array
     const updatedSession = await (prisma as any).cartSession.findUnique({
       where: { id: session.id },
       include: { items: { include: { product: true } } },
     });
 
     const subtotalCents = updatedSession.items.reduce((sum: number, item: any) => sum + (item.subtotalCents || 0), 0);
-    const taxCents = Math.round(subtotalCents * 0.15);
-    const totalCents = subtotalCents + taxCents;
+    const totalCents = subtotalCents + Math.round(subtotalCents * 0.15);
 
     await (prisma as any).cartSession.update({
       where: { id: session.id },
-      data: { subtotalCents, taxCents, totalCents },
+      data: { subtotalCents, totalCents },
     });
 
     return NextResponse.json({
       success: true,
       session: {
         isDocked: cart.status === "docked" || false,
-        paymentStatus: updatedSession.paymentStatus || "unpaid",
+        paymentStatus: "unpaid",
         subtotalCents,
-        taxCents,
         totalCents,
         items: updatedSession.items.map((i: any) => ({ name: i.product.name, quantity: i.quantity })),
       },
     });
 
   } catch (err: any) {
-    console.error("[scan-item] failed:", err);
-    return NextResponse.json({ error: "Scan failed", detail: String(err) }, { status: 500 });
+    return NextResponse.json({ error: "Server Error", detail: String(err) }, { status: 500 });
   }
 }

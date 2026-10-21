@@ -35,20 +35,12 @@ export async function POST(req: NextRequest) {
 
     if (!session) return NextResponse.json({ success: false, error: "No active session" }, { status: 404 });
 
-    // FIX: We use the `sku` field (which exists on your DB, as seen in earlier logs)
-    // If it doesn't exist, we use the `name` field with the tag attached.
-    // We will check if a cart item has this EXACT tag.
-    const existingItem = session.items.find((i: any) => {
-      // If the database has an `sku` field, check it.
-      if (i.sku === rfid_tag) return true;
-      // Fallback: check if the name contains the tag (e.g., "Milk (E3087506)")
-      if (i.name && i.name.includes(rfid_tag)) return true;
-      return false;
-    });
+    // Find item by productId (since we can't store the tag)
+    const existingItem = session.items.find((i: any) => i.productId === product.id);
 
     // 3. Create or Update the Cart Item
     if (existingItem) {
-      // Same tag scanned again -> remove it
+      // If we scanned it again, remove it (toggle)
       await (prisma as any).cartItem.delete({ where: { id: existingItem.id } });
       
       await (prisma as any).product.update({
@@ -60,14 +52,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: "Out of stock" }, { status: 400 });
       }
 
-      // We save the product name + tag so the system can distinguish tags
-      const itemName = `${product.name} (${rfid_tag})`;
-
+      // Create the item using ONLY the fields we know exist
       await (prisma as any).cartItem.create({
         data: {
           sessionId: session.id,
           productId: product.id,
-          name: itemName, // <--- We use the name field to track the tag
           quantity: 1,
           unitPriceCents: (product.priceCents || 0),
           subtotalCents: (product.priceCents || 0),
@@ -95,8 +84,7 @@ export async function POST(req: NextRequest) {
       data: { subtotalCents, taxCents, totalCents },
     });
 
-    // 5. Return EXACTLY what the ESP32 v19 code expects
-    // We strip the tag out of the name before sending it to the screen
+    // 5. Return to ESP32
     return NextResponse.json({
       success: true,
       session: {
@@ -105,17 +93,10 @@ export async function POST(req: NextRequest) {
         subtotalCents,
         taxCents,
         totalCents,
-        items: updatedSession.items.map((i: any) => {
-          // Clean the name by removing the tag parentheses for the TFT screen
-          let cleanName = i.name || i.product.name;
-          if (cleanName.includes(" (")) {
-            cleanName = cleanName.split(" (")[0];
-          }
-          return { 
-            name: cleanName, 
-            quantity: i.quantity 
-          };
-        }),
+        items: updatedSession.items.map((i: any) => ({ 
+          name: i.product.name, 
+          quantity: i.quantity 
+        })),
       },
     });
 

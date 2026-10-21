@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     const product = productTag.product;
 
-    // 2. Find the Cart using the correct `id` column
+    // 2. Find the Cart
     const cart = await (prisma as any).cart.findUnique({
       where: { id: cart_id },
     });
@@ -37,8 +37,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Cart not found" }, { status: 404 });
     }
 
-    // 3. Find the active session for this cart
-    let session = await (prisma as any).cartSession.findFirst({
+    // 3. Find the active session
+    const session = await (prisma as any).cartSession.findFirst({
       where: { cartId: cart.id, isActive: true },
       include: { items: true },
     });
@@ -58,9 +58,15 @@ export async function POST(req: NextRequest) {
           data: { stock: { increment: existingItem.quantity } },
         });
       } else {
+        const newQuantity = existingItem.quantity + 1;
+        const newSubtotal = newQuantity * (product.priceCents || 0);
+        
         await (prisma as any).cartItem.update({
           where: { id: existingItem.id },
-          data: { quantity: { increment: 1 } },
+          data: { 
+            quantity: newQuantity,
+            subtotalCents: newSubtotal
+          },
         });
         await (prisma as any).product.update({
           where: { id: product.id },
@@ -72,7 +78,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Out of stock" }, { status: 400 });
       }
 
-      // Add to CartItem (using sessionId based on the relation)
+      // FIX: Added subtotalCents to the create call
+      const itemSubtotal = (product.priceCents || 0) * 1;
+      
       await (prisma as any).cartItem.create({
         data: {
           sessionId: session.id,
@@ -80,6 +88,7 @@ export async function POST(req: NextRequest) {
           name: product.name,
           unitPriceCents: product.priceCents || 0,
           quantity: 1,
+          subtotalCents: itemSubtotal, // <--- THIS WAS MISSING
         },
       });
 
@@ -95,7 +104,7 @@ export async function POST(req: NextRequest) {
       include: { items: true },
     });
 
-    const subtotalCents = updatedSession.items.reduce((sum: number, item: any) => sum + ((item.unitPriceCents || 0) * item.quantity), 0);
+    const subtotalCents = updatedSession.items.reduce((sum: number, item: any) => sum + (item.subtotalCents || 0), 0);
     const taxCents = Math.round(subtotalCents * 0.15);
     const totalCents = subtotalCents + taxCents;
 

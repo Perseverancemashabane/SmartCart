@@ -35,48 +35,38 @@ export async function POST(req: NextRequest) {
 
     if (!session) return NextResponse.json({ success: false, error: "No active session" }, { status: 404 });
 
-    const existingItem = session.items.find((i: any) => i.productId === product.id);
+    // FIX: Find the item by the specific RFID tag (saved in the `sku` field), not just the productId
+    const existingItem = session.items.find((i: any) => i.sku === rfid_tag);
 
     // 3. Create or Update the Cart Item
     if (existingItem) {
-      if (action === "toggle" || action === "remove") {
-        await (prisma as any).cartItem.delete({ where: { id: existingItem.id } });
-        // FIX: Use stockQuantity
-        await (prisma as any).product.update({
-          where: { id: product.id },
-          data: { stockQuantity: { increment: existingItem.quantity } },
-        });
-      } else {
-        await (prisma as any).cartItem.update({
-          where: { id: existingItem.id },
-          data: { 
-            quantity: { increment: 1 },
-            subtotalCents: { increment: (product.priceCents || 0) } 
-          },
-        });
-        // FIX: Use stockQuantity
-        await (prisma as any).product.update({
-          where: { id: product.id },
-          data: { stockQuantity: { decrement: 1 } },
-        });
-      }
+      // If the SAME tag is scanned twice, remove it
+      await (prisma as any).cartItem.delete({ where: { id: existingItem.id } });
+      
+      // Give stock back
+      await (prisma as any).product.update({
+        where: { id: product.id },
+        data: { stockQuantity: { increment: existingItem.quantity } },
+      });
     } else {
-      // FIX: Use stockQuantity for the check
+      // Check stock
       if (product.stockQuantity !== null && product.stockQuantity <= 0) {
         return NextResponse.json({ success: false, error: "Out of stock" }, { status: 400 });
       }
 
+      // Add the new item, saving the rfid_tag in the `sku` field so we know which tag it is
       await (prisma as any).cartItem.create({
         data: {
           sessionId: session.id,
           productId: product.id,
+          sku: rfid_tag, // <--- SAVE THE SPECIFIC TAG HERE
           quantity: 1,
           unitPriceCents: (product.priceCents || 0),
           subtotalCents: (product.priceCents || 0),
         },
       });
 
-      // FIX: Use stockQuantity
+      // Decrease stock
       await (prisma as any).product.update({
         where: { id: product.id },
         data: { stockQuantity: { decrement: 1 } },
@@ -107,6 +97,7 @@ export async function POST(req: NextRequest) {
         subtotalCents,
         taxCents,
         totalCents,
+        // We return the product name for each item, so the screen shows "Milk" twice if two tags are scanned
         items: updatedSession.items.map((i: any) => ({ 
           name: i.product.name, 
           quantity: i.quantity 

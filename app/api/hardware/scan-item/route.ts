@@ -35,38 +35,45 @@ export async function POST(req: NextRequest) {
 
     if (!session) return NextResponse.json({ success: false, error: "No active session" }, { status: 404 });
 
-    // FIX: Find the item by the specific RFID tag (saved in the `sku` field), not just the productId
-    const existingItem = session.items.find((i: any) => i.sku === rfid_tag);
+    // FIX: We use the `sku` field (which exists on your DB, as seen in earlier logs)
+    // If it doesn't exist, we use the `name` field with the tag attached.
+    // We will check if a cart item has this EXACT tag.
+    const existingItem = session.items.find((i: any) => {
+      // If the database has an `sku` field, check it.
+      if (i.sku === rfid_tag) return true;
+      // Fallback: check if the name contains the tag (e.g., "Milk (E3087506)")
+      if (i.name && i.name.includes(rfid_tag)) return true;
+      return false;
+    });
 
     // 3. Create or Update the Cart Item
     if (existingItem) {
-      // If the SAME tag is scanned twice, remove it
+      // Same tag scanned again -> remove it
       await (prisma as any).cartItem.delete({ where: { id: existingItem.id } });
       
-      // Give stock back
       await (prisma as any).product.update({
         where: { id: product.id },
         data: { stockQuantity: { increment: existingItem.quantity } },
       });
     } else {
-      // Check stock
       if (product.stockQuantity !== null && product.stockQuantity <= 0) {
         return NextResponse.json({ success: false, error: "Out of stock" }, { status: 400 });
       }
 
-      // Add the new item, saving the rfid_tag in the `sku` field so we know which tag it is
+      // We save the product name + tag so the system can distinguish tags
+      const itemName = `${product.name} (${rfid_tag})`;
+
       await (prisma as any).cartItem.create({
         data: {
           sessionId: session.id,
           productId: product.id,
-          sku: rfid_tag, // <--- SAVE THE SPECIFIC TAG HERE
+          name: itemName, // <--- We use the name field to track the tag
           quantity: 1,
           unitPriceCents: (product.priceCents || 0),
           subtotalCents: (product.priceCents || 0),
         },
       });
 
-      // Decrease stock
       await (prisma as any).product.update({
         where: { id: product.id },
         data: { stockQuantity: { decrement: 1 } },
@@ -89,6 +96,7 @@ export async function POST(req: NextRequest) {
     });
 
     // 5. Return EXACTLY what the ESP32 v19 code expects
+    // We strip the tag out of the name before sending it to the screen
     return NextResponse.json({
       success: true,
       session: {
@@ -97,11 +105,17 @@ export async function POST(req: NextRequest) {
         subtotalCents,
         taxCents,
         totalCents,
-        // We return the product name for each item, so the screen shows "Milk" twice if two tags are scanned
-        items: updatedSession.items.map((i: any) => ({ 
-          name: i.product.name, 
-          quantity: i.quantity 
-        })),
+        items: updatedSession.items.map((i: any) => {
+          // Clean the name by removing the tag parentheses for the TFT screen
+          let cleanName = i.name || i.product.name;
+          if (cleanName.includes(" (")) {
+            cleanName = cleanName.split(" (")[0];
+          }
+          return { 
+            name: cleanName, 
+            quantity: i.quantity 
+          };
+        }),
       },
     });
 

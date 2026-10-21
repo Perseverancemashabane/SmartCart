@@ -35,12 +35,11 @@ export async function POST(req: NextRequest) {
 
     if (!session) return NextResponse.json({ success: false, error: "No active session" }, { status: 404 });
 
-    // Find item by productId (since we can't store the tag)
-    const existingItem = session.items.find((i: any) => i.productId === product.id);
+    // 3. Find item by the SPECIFIC RFID tag stored in `sku`
+    const existingItem = session.items.find((i: any) => i.sku === rfid_tag);
 
-    // 3. Create or Update the Cart Item
     if (existingItem) {
-      // If we scanned it again, remove it (toggle)
+      // Remove it (toggle off)
       await (prisma as any).cartItem.delete({ where: { id: existingItem.id } });
       
       await (prisma as any).product.update({
@@ -52,11 +51,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: "Out of stock" }, { status: 400 });
       }
 
-      // Create the item using ONLY the fields we know exist
+      // Add the new item, saving the SPECIFIC tag in `sku`
       await (prisma as any).cartItem.create({
         data: {
           sessionId: session.id,
           productId: product.id,
+          sku: rfid_tag, // <--- Saves the specific tag
           quantity: 1,
           unitPriceCents: (product.priceCents || 0),
           subtotalCents: (product.priceCents || 0),

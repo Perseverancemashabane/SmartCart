@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     // 3. Find the active session
     const session = await (prisma as any).cartSession.findFirst({
       where: { cartId: cart.id, isActive: true },
-      include: { items: true },
+      include: { items: { include: { product: true } } },
     });
 
     if (!session) {
@@ -78,17 +78,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Out of stock" }, { status: 400 });
       }
 
-      // FIX: Added subtotalCents to the create call
-      const itemSubtotal = (product.priceCents || 0) * 1;
-      
+      // FIX: Removed `name`. The database looks it up via the Product relation.
       await (prisma as any).cartItem.create({
         data: {
           sessionId: session.id,
           productId: product.id,
-          name: product.name,
           unitPriceCents: product.priceCents || 0,
           quantity: 1,
-          subtotalCents: itemSubtotal, // <--- THIS WAS MISSING
+          subtotalCents: (product.priceCents || 0) * 1,
         },
       });
 
@@ -101,7 +98,7 @@ export async function POST(req: NextRequest) {
     // 5. Recalculate Session Totals
     const updatedSession = await (prisma as any).cartSession.findUnique({
       where: { id: session.id },
-      include: { items: true },
+      include: { items: { include: { product: true } } },
     });
 
     const subtotalCents = updatedSession.items.reduce((sum: number, item: any) => sum + (item.subtotalCents || 0), 0);
@@ -121,7 +118,7 @@ export async function POST(req: NextRequest) {
         subtotalCents,
         taxCents,
         totalCents,
-        items: updatedSession.items.map((i: any) => ({ name: i.name, quantity: i.quantity })),
+        items: updatedSession.items.map((i: any) => ({ name: i.product.name, quantity: i.quantity })),
       },
     });
 

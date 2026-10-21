@@ -1,4 +1,3 @@
-// app/api/hardware/scan-item/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
@@ -17,9 +16,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing cart_id or rfid_tag" }, { status: 400 });
     }
 
-    // 1. Find the product by RFID tag
+    // 1. Find the product by RFID tag (USING CORRECT COLUMN NAME: rfidTagId)
     const productTag = await (prisma as any).productTag.findFirst({
-      where: { tag: rfid_tag },
+      where: { rfidTagId: rfid_tag }, 
       include: { product: true },
     });
 
@@ -30,10 +29,17 @@ export async function POST(req: NextRequest) {
     const product = productTag.product;
 
     // 2. Find the active cart
-    const cart = await (prisma as any).cart.findFirst({
+    let cart = await (prisma as any).cart.findFirst({
       where: { cartCode: cart_id },
       include: { items: true },
     });
+
+    if (!cart) {
+      cart = await (prisma as any).cart.findFirst({
+        where: { id: cart_id },
+        include: { items: true },
+      });
+    }
 
     if (!cart) {
       return NextResponse.json({ error: "Cart not found" }, { status: 404 });
@@ -43,30 +49,23 @@ export async function POST(req: NextRequest) {
     const existingItem = cart.items.find((i: any) => i.productId === product.id);
 
     if (existingItem) {
-      // If action is "toggle" and they scan again, we remove it (and give stock back)
       if (action === "toggle" || action === "remove") {
         await (prisma as any).cartItem.delete({ where: { id: existingItem.id } });
-        
-        // Give stock back
         await (prisma as any).product.update({
           where: { id: product.id },
           data: { stock: { increment: existingItem.quantity } },
         });
       } else {
-        // Increment quantity
         await (prisma as any).cartItem.update({
           where: { id: existingItem.id },
           data: { quantity: { increment: 1 } },
         });
-        
-        // Decrease stock
         await (prisma as any).product.update({
           where: { id: product.id },
           data: { stock: { decrement: 1 } },
         });
       }
     } else {
-      // 4. Item is not in cart, add it and decrease stock
       if (product.stock <= 0) {
         return NextResponse.json({ error: "Out of stock" }, { status: 400 });
       }
@@ -76,26 +75,25 @@ export async function POST(req: NextRequest) {
           cartId: cart.id,
           productId: product.id,
           name: product.name,
-          unitPriceCents: product.priceCents,
+          unitPriceCents: product.priceCents || 0,
           quantity: 1,
         },
       });
 
-      // Decrease stock
       await (prisma as any).product.update({
         where: { id: product.id },
         data: { stock: { decrement: 1 } },
       });
     }
 
-    // 5. Recalculate Cart Totals
+    // 4. Recalculate Cart Totals
     const updatedCart = await (prisma as any).cart.findUnique({
       where: { id: cart.id },
       include: { items: true },
     });
 
-    const subtotalCents = updatedCart.items.reduce((sum: number, item: any) => sum + (item.unitPriceCents * item.quantity), 0);
-    const taxCents = Math.round(subtotalCents * 0.15); // Assuming 15% VAT, change if different
+    const subtotalCents = updatedCart.items.reduce((sum: number, item: any) => sum + ((item.unitPriceCents || 0) * item.quantity), 0);
+    const taxCents = Math.round(subtotalCents * 0.15);
     const totalCents = subtotalCents + taxCents;
 
     await (prisma as any).cart.update({
@@ -103,12 +101,11 @@ export async function POST(req: NextRequest) {
       data: { subtotalCents, taxCents, totalCents },
     });
 
-    // 6. Return the new session to the ESP32
     return NextResponse.json({
       success: true,
       session: {
-        isDocked: updatedCart.isDocked,
-        paymentStatus: updatedCart.paymentStatus,
+        isDocked: updatedCart.isDocked || false,
+        paymentStatus: updatedCart.paymentStatus || "unpaid",
         subtotalCents,
         taxCents,
         totalCents,

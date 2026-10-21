@@ -41,9 +41,10 @@ export async function POST(req: NextRequest) {
     if (existingItem) {
       if (action === "toggle" || action === "remove") {
         await (prisma as any).cartItem.delete({ where: { id: existingItem.id } });
+        // FIX: Use stockQuantity
         await (prisma as any).product.update({
           where: { id: product.id },
-          data: { stock: { increment: existingItem.quantity } },
+          data: { stockQuantity: { increment: existingItem.quantity } },
         });
       } else {
         await (prisma as any).cartItem.update({
@@ -53,30 +54,32 @@ export async function POST(req: NextRequest) {
             subtotalCents: { increment: (product.priceCents || 0) } 
           },
         });
+        // FIX: Use stockQuantity
         await (prisma as any).product.update({
           where: { id: product.id },
-          data: { stock: { decrement: 1 } },
+          data: { stockQuantity: { decrement: 1 } },
         });
       }
     } else {
-      if (product.stock <= 0) {
+      // FIX: Use stockQuantity for the check
+      if (product.stockQuantity !== null && product.stockQuantity <= 0) {
         return NextResponse.json({ success: false, error: "Out of stock" }, { status: 400 });
       }
 
-      // FIX: Added unitPriceCents back
       await (prisma as any).cartItem.create({
         data: {
           sessionId: session.id,
           productId: product.id,
           quantity: 1,
-          unitPriceCents: (product.priceCents || 0), // <--- Added this
+          unitPriceCents: (product.priceCents || 0),
           subtotalCents: (product.priceCents || 0),
         },
       });
 
+      // FIX: Use stockQuantity
       await (prisma as any).product.update({
         where: { id: product.id },
-        data: { stock: { decrement: 1 } },
+        data: { stockQuantity: { decrement: 1 } },
       });
     }
 

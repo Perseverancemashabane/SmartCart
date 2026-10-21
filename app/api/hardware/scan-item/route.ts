@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { clear } from "console";
 
 export const runtime = "nodejs";
 
@@ -19,35 +20,33 @@ export async function POST(req: NextRequest) {
     });
 
     if (!productTag || !productTag.product) {
-      return NextResponse.json({ error: "Product not found for this tag" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Product not found" }, { status: 404 });
     }
 
     const product = productTag.product;
 
     // 2. Find the Cart and Session
     const cart = await (prisma as any).cart.findUnique({ where: { id: cart_id } });
-    if (!cart) return NextResponse.json({ error: "Cart not found" }, { status: 404 });
+    if (!cart) return NextResponse.json({ success: false, error: "Cart not found" }, { status: 404 });
 
     const session = await (prisma as any).cartSession.findFirst({
       where: { cartId: cart.id, isActive: true },
       include: { items: true },
     });
 
-    if (!session) return NextResponse.json({ error: "No active session" }, { status: 404 });
+    if (!session) return NextResponse.json({ success: false, error: "No active session" }, { status: 404 });
 
     const existingItem = session.items.find((i: any) => i.productId === product.id);
 
     // 3. Create or Update the Cart Item
     if (existingItem) {
       if (action === "toggle" || action === "remove") {
-        // Remove the item completely
         await (prisma as any).cartItem.delete({ where: { id: existingItem.id } });
         await (prisma as any).product.update({
           where: { id: product.id },
           data: { stock: { increment: existingItem.quantity } },
         });
       } else {
-        // Add another one
         await (prisma as any).cartItem.update({
           where: { id: existingItem.id },
           data: { 
@@ -62,10 +61,9 @@ export async function POST(req: NextRequest) {
       }
     } else {
       if (product.stock <= 0) {
-        return NextResponse.json({ error: "Out of stock" }, { status: 400 });
+        return NextResponse.json({ success: false, error: "Out of stock" }, { status: 400 });
       }
 
-      // Add new item to cart
       await (prisma as any).cartItem.create({
         data: {
           sessionId: session.id,
@@ -96,9 +94,9 @@ export async function POST(req: NextRequest) {
       data: { subtotalCents, taxCents, totalCents },
     });
 
-    // 5. Return exactly what the ESP32 expects
+    // 5. Return EXACTLY what the ESP32 v19 code expects
     return NextResponse.json({
-      success: true,
+      success: true, // <-- THIS is what the ESP32 needs to stop saying "Scan failed"
       session: {
         isDocked: cart.status === "docked" || false,
         paymentStatus: updatedSession.paymentStatus || "unpaid",
@@ -114,6 +112,6 @@ export async function POST(req: NextRequest) {
 
   } catch (err: any) {
     console.error("[scan-item] failed:", err);
-    return NextResponse.json({ error: "Scan failed", detail: String(err) }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Scan failed", detail: String(err) }, { status: 500 });
   }
 }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { clear } from "console";
 
 export const runtime = "nodejs";
 
@@ -64,11 +63,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: "Out of stock" }, { status: 400 });
       }
 
+      // FIX: Added unitPriceCents back
       await (prisma as any).cartItem.create({
         data: {
           sessionId: session.id,
           productId: product.id,
           quantity: 1,
+          unitPriceCents: (product.priceCents || 0), // <--- Added this
           subtotalCents: (product.priceCents || 0),
         },
       });
@@ -96,7 +97,7 @@ export async function POST(req: NextRequest) {
 
     // 5. Return EXACTLY what the ESP32 v19 code expects
     return NextResponse.json({
-      success: true, // <-- THIS is what the ESP32 needs to stop saying "Scan failed"
+      success: true,
       session: {
         isDocked: cart.status === "docked" || false,
         paymentStatus: updatedSession.paymentStatus || "unpaid",

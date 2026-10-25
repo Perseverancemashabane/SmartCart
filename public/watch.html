@@ -90,238 +90,52 @@
       flex-wrap: wrap;
       border-bottom: 1px solid #334155;
     }
-    .shopper-name {
-      font-size: 0.9rem;
-      color: #cbd5e1;
-    }
+    .shopper-name { font-size: 0.9rem; color: #cbd5e1; }
     .shopper-name strong { color: #f8fafc; font-weight: 600; }
-    .total-display {
-      font-size: 1.1rem;
-      font-weight: 700;
-      color: #f8fafc;
-    }
-    .total-display .currency {
-      font-size: 0.85rem;
-      color: #94a3b8;
-      font-weight: 500;
-      margin-right: 4px;
-    }
-    .container {
-      max-width: 700px;
-      margin: 0 auto;
-      padding: 20px;
-    }
-    .section {
-      background: #1e293b;
-      border-radius: 16px;
-      padding: 20px;
-      margin-bottom: 16px;
-    }
-    .section-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 16px;
-      gap: 12px;
-    }
-    .section-title {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 1.05rem;
-      font-weight: 700;
-    }
-    .section-title .icon {
-      font-size: 1.2rem;
-    }
-    .count-badge {
-      padding: 3px 10px;
-      background: #334155;
-      border-radius: 12px;
-      font-size: 0.75rem;
-      color: #cbd5e1;
-      font-weight: 600;
-    }
-    .item-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .item-card {
-      background: #0f172a;
-      border-radius: 12px;
-      padding: 12px 14px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      border: 1px solid #1e293b;
-      transition: all 0.2s;
-    }
-    .item-card.confirmed {
-      border-color: rgba(74,222,128,0.4);
-      background: rgba(74,222,128,0.05);
-    }
-    .item-card.remove-requested {
-      border-color: rgba(248,113,113,0.4);
-      background: rgba(248,113,113,0.05);
-    }
-    .item-info {
-      flex: 1;
-      min-width: 0;
-    }
-    .item-name {
-      font-weight: 600;
-      color: #f8fafc;
-      margin-bottom: 2px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .item-meta {
-      font-size: 0.78rem;
-      color: #94a3b8;
-    }
-    .item-meta .price {
-      color: #4ade80;
-      font-weight: 600;
-    }
-    .item-actions {
-      display: flex;
-      gap: 6px;
-      flex-shrink: 0;
-    }
-    .btn-icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 10px;
-      border: 1px solid #334155;
-      background: #1e293b;
-      color: #94a3b8;
-      cursor: pointer;
-      font-size: 1.1rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.15s;
-    }
-    .btn-icon:hover {
-      transform: scale(1.05);
-    }
-    .btn-icon.confirm.active {
-      background: #10b981;
-      border-color: #10b981;
-      color: white;
-    }
-    .btn-icon.remove.active {
-      background: #ef4444;
-      border-color: #ef4444;
-      color: white;
-    }
-    .btn-icon:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-      transform: none;
-    }
-    .list-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      background: #0f172a;
-      border-radius: 10px;
-      font-size: 0.9rem;
-    }
-    .list-row .status-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #64748b;
-      flex-shrink: 0;
-    }
+    .total-display { font-size: 1.1rem; font-weight: 700; color: #f8fafc; }
+    .total-display .currency { font-size: 0.85rem; color: #94a3b8; font-weight: 500; margin-right: 4px; }
+    .container { max-width: 700px; margin: 0 auto; padding: 20px; }
+    .section { background: #1e293b; border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; }
+    .section-title { display: flex; align-items: center; gap: 10px; font-size: 1.05rem; font-weight: 700; }
+    .section-title .icon { font-size: 1.2rem; }
+    .count-badge { padding: 3px 10px; background: #334155; border-radius: 12px; font-size: 0.75rem; color: #cbd5e1; font-weight: 600; }
+    
+    .item-list { display: flex; flex-direction: column; gap: 8px; }
+    .item-card { background: #0f172a; border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #1e293b; transition: all 0.2s; }
+    .item-card.confirmed { border-color: rgba(74,222,128,0.4); background: rgba(74,222,128,0.05); }
+    .item-card.remove-requested { border-color: rgba(248,113,113,0.4); background: rgba(248,113,113,0.05); }
+    .item-info { flex: 1; min-width: 0; }
+    .item-name { font-weight: 600; color: #f8fafc; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item-meta { font-size: 0.78rem; color: #94a3b8; }
+    .item-meta .price { color: #4ade80; font-weight: 600; }
+    .item-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .btn-icon { width: 36px; height: 36px; border-radius: 10px; border: 1px solid #334155; background: #1e293b; color: #94a3b8; cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+    .btn-icon:hover { transform: scale(1.05); }
+    .btn-icon.confirm.active { background: #10b981; border-color: #10b981; color: white; }
+    .btn-icon.remove.active { background: #ef4444; border-color: #ef4444; color: white; }
+    .btn-icon:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    
+    .list-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #0f172a; border-radius: 10px; font-size: 0.9rem; }
+    .list-row .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #64748b; flex-shrink: 0; }
     .list-row.scanned .status-dot { background: #10b981; }
-    .list-row.scanned .list-name {
-      text-decoration: line-through;
-      color: #64748b;
-    }
+    .list-row.scanned .list-name { text-decoration: line-through; color: #64748b; }
     .list-name { flex: 1; color: #e2e8f0; }
-    .list-qty {
-      font-size: 0.75rem;
-      color: #94a3b8;
-      background: #1e293b;
-      padding: 2px 8px;
-      border-radius: 6px;
-    }
-    .list-remove {
-      background: none;
-      border: none;
-      color: #64748b;
-      cursor: pointer;
-      font-size: 1rem;
-      padding: 4px 6px;
-      border-radius: 6px;
-    }
+    .list-qty { font-size: 0.75rem; color: #94a3b8; background: #1e293b; padding: 2px 8px; border-radius: 6px; }
+    .list-remove { background: none; border: none; color: #64748b; cursor: pointer; font-size: 1rem; padding: 4px 6px; border-radius: 6px; }
     .list-remove:hover { color: #ef4444; background: rgba(239,68,68,0.1); }
     
-    /* AUTOCOMPLETE SEARCH */
-    .search-wrapper {
-      position: relative;
-      margin-top: 12px;
-    }
-    .add-item-row {
-      display: flex;
-      gap: 8px;
-    }
-    .add-item-row input {
-      flex: 1;
-      padding: 10px 12px;
-      background: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 10px;
-      color: #f8fafc;
-      font-size: 0.9rem;
-      outline: none;
-    }
+    .search-wrapper { position: relative; margin-top: 12px; }
+    .add-item-row { display: flex; gap: 8px; }
+    .add-item-row input { flex: 1; padding: 10px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 10px; color: #f8fafc; font-size: 0.9rem; outline: none; }
     .add-item-row input:focus { border-color: #3b82f6; }
-    .add-item-row button {
-      padding: 10px 16px;
-      background: #3b82f6;
-      border: none;
-      border-radius: 10px;
-      color: white;
-      font-weight: 600;
-      cursor: pointer;
-      font-size: 0.9rem;
-      white-space: nowrap;
-    }
+    .add-item-row button { padding: 10px 16px; background: #3b82f6; border: none; border-radius: 10px; color: white; font-weight: 600; cursor: pointer; font-size: 0.9rem; white-space: nowrap; }
     .add-item-row button:hover { background: #2563eb; }
     .add-item-row button:disabled { background: #475569; cursor: not-allowed; }
     
-    /* DROPDOWN */
-    .autocomplete-dropdown {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: 0;
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 10px;
-      margin-top: 4px;
-      max-height: 200px;
-      overflow-y: auto;
-      z-index: 50;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-      display: none;
-    }
+    .autocomplete-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #1e293b; border: 1px solid #334155; border-radius: 10px; margin-top: 4px; max-height: 200px; overflow-y: auto; z-index: 50; box-shadow: 0 10px 25px rgba(0,0,0,0.5); display: none; }
     .autocomplete-dropdown.active { display: block; }
-    .autocomplete-item {
-      padding: 10px 14px;
-      cursor: pointer;
-      border-bottom: 1px solid #334155;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
+    .autocomplete-item { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
     .autocomplete-item:last-child { border-bottom: none; }
     .autocomplete-item:hover { background: #334155; }
     .autocomplete-name { font-weight: 600; color: #f8fafc; }
@@ -330,36 +144,19 @@
 
     .empty { text-align: center; padding: 30px 20px; color: #64748b; font-size: 0.9rem; }
     .empty-icon { font-size: 2.5rem; margin-bottom: 8px; opacity: 0.5; }
-    .toast-container {
-      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-      display: flex; flex-direction: column; gap: 8px; z-index: 100; pointer-events: none;
-    }
-    .toast {
-      padding: 10px 18px; background: #1e293b; border-radius: 10px; font-size: 0.85rem;
-      color: #f8fafc; box-shadow: 0 6px 20px rgba(0,0,0,0.4); border-left: 3px solid #3b82f6;
-      animation: slideUp 0.3s ease-out;
-    }
+    .toast-container { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 100; pointer-events: none; }
+    .toast { padding: 10px 18px; background: #1e293b; border-radius: 10px; font-size: 0.85rem; color: #f8fafc; box-shadow: 0 6px 20px rgba(0,0,0,0.4); border-left: 3px solid #3b82f6; animation: slideUp 0.3s ease-out; }
     .toast.success { border-left-color: #10b981; }
     .toast.error { border-left-color: #ef4444; }
-    @keyframes slideUp {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     .loading { text-align: center; padding: 60px 20px; color: #64748b; }
-    .loading-spinner {
-      display: inline-block; width: 40px; height: 40px; border: 3px solid #334155;
-      border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px;
-    }
+    .loading-spinner { display: inline-block; width: 40px; height: 40px; border: 3px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .no-cart { text-align: center; padding: 60px 20px; }
     .no-cart-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.4; }
     .no-cart h2 { font-size: 1.2rem; margin-bottom: 8px; color: #cbd5e1; }
     .no-cart p { color: #64748b; font-size: 0.9rem; line-height: 1.5; }
-    .logout-btn {
-      padding: 6px 12px; background: rgba(248,113,113,0.15); color: #f87171;
-      border: 1px solid rgba(248,113,113,0.3); border-radius: 20px; font-size: 0.8rem;
-      font-weight: 600; cursor: pointer; font-family: inherit;
-    }
+    .logout-btn { padding: 6px 12px; background: rgba(248,113,113,0.15); color: #f87171; border: 1px solid rgba(248,113,113,0.3); border-radius: 20px; font-size: 0.8rem; font-weight: 600; cursor: pointer; font-family: inherit; }
     .logout-btn:hover { background: rgba(248,113,113,0.25); }
   </style>
 </head>
@@ -425,6 +222,16 @@
         </div>
       </div>
 
+      <!-- DOCK CART BUTTON -->
+      <div class="container" style="padding-bottom: 0; padding-left: 0; padding-right: 0;" id="dock-container" style="display: none;">
+        <div class="section" style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; text-align: center;">
+          <h3 style="color: #10b981; margin-bottom: 10px;">Finished Shopping?</h3>
+          <button id="dock-btn" style="width: 100%; padding: 15px; background: #10b981; color: white; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: 0.2s;">
+            Dock Cart & Unlock Payment
+          </button>
+        </div>
+      </div>
+
       <!-- SEARCH AND AUTOCOMPLETE -->
       <div class="search-wrapper">
         <div class="add-item-row">
@@ -447,7 +254,6 @@
     let currentCustomer = null;
     let lastPollError = false;
     
-    // Search state
     let allProducts = [];
     let selectedProduct = null;
 
@@ -485,7 +291,6 @@
       return div.innerHTML;
     }
 
-    // --- LOAD PRODUCTS FOR SEARCH ---
     async function loadProducts() {
       try {
         const res = await fetch(`${API}/api/products/list`);
@@ -498,7 +303,6 @@
       }
     }
 
-    // --- SEARCH INPUT HANDLERS ---
     const searchInput = document.getElementById('new-item-input');
     const dropdown = document.getElementById('autocomplete-dropdown');
     const addBtn = document.getElementById('add-item-btn');
@@ -517,7 +321,7 @@
       const matches = allProducts.filter(p => 
         p.name.toLowerCase().includes(query) || 
         (p.tags && p.tags.some(t => t.toLowerCase().includes(query)))
-      ).slice(0, 8); // limit to 8 results
+      ).slice(0, 8);
 
       if (matches.length === 0) {
         dropdown.innerHTML = `<div class="autocomplete-empty">No products found in store inventory</div>`;
@@ -545,14 +349,12 @@
       dropdown.classList.add('active');
     });
 
-    // Hide dropdown when clicking outside
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.search-wrapper')) {
         dropdown.classList.remove('active');
       }
     });
 
-    // --- ADD TO LIST ---
     async function handleAddListItem() {
       if (!selectedProduct) return;
       
@@ -566,7 +368,7 @@
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ 
-            productId: selectedProduct.id, // Send the REAL DB product ID
+            productId: selectedProduct.id,
             quantity: 1 
           }),
         });
@@ -577,7 +379,6 @@
         }
         showToast(`Added: ${val}`, 'success');
         
-        // Reset search state
         searchInput.value = '';
         selectedProduct = null;
         addBtn.textContent = 'Add';
@@ -599,7 +400,38 @@
       }
     });
 
-    // --- MAIN POLLING & RENDER ---
+    // Handle Dock Button
+    document.addEventListener('click', async (e) => {
+      if (e.target && e.target.id === 'dock-btn') {
+        const btn = e.target;
+        btn.disabled = true;
+        btn.textContent = 'Docking...';
+
+        try {
+          const res = await fetch(`${API}/api/hardware/station-dock`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cart_id: currentCart.cartId })
+          });
+          
+          if (res.ok) {
+            showToast('Cart docked! Payment unlocked on screen.', 'success');
+            btn.textContent = 'Cart Docked (Payment Unlocked)';
+            btn.style.background = '#047857';
+            btn.style.cursor = 'default';
+          } else {
+            showToast('Failed to dock cart', 'error');
+            btn.disabled = false;
+            btn.textContent = 'Dock Cart & Unlock Payment';
+          }
+        } catch (err) {
+          showToast('Network error', 'error');
+          btn.disabled = false;
+          btn.textContent = 'Dock Cart & Unlock Payment';
+        }
+      }
+    });
+
     async function pollState() {
       try {
         const res = await fetch(`${API}/api/watcher/state`, {
@@ -718,7 +550,7 @@
           <div class="empty">
             <div class="empty-icon">📝</div>
             <div>No items on the list</div>
-            <div style="font-size: 0.8rem; margin-top: 4px;">Search above to add items</div>
+            <div style="font-size: 0.8rem; margin-top: 4px;">Add items below to share with the shopper</div>
           </div>
         `;
       } else {
@@ -739,6 +571,12 @@
         listRows.querySelectorAll('.list-remove').forEach(btn => {
           btn.addEventListener('click', () => handleRemoveListItem(btn));
         });
+      }
+      
+      // Hide dock button if already docked
+      if (currentCart && currentCart.isDocked) {
+        const container = document.getElementById('dock-container');
+        if (container) container.style.display = 'none';
       }
     }
 
@@ -817,7 +655,7 @@
       currentCustomer = await checkAuth();
       if (!currentCustomer) return;
       
-      await loadProducts(); // Fetch product catalog for search
+      await loadProducts();
       await pollState();
       setInterval(pollState, 2000);
     })();

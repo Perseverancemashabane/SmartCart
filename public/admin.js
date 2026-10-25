@@ -1,5 +1,5 @@
 /**
- * SmartCart Admin — Frontend Logic (v3)
+ * SmartCart Admin — Frontend Logic (v4)
  */
 
 const API = window.location.origin;
@@ -43,7 +43,6 @@ function escapeHtml(str) {
 }
 
 function parsePrice(input) {
-  // Handle both "15.99" and "15,99"
   const cleaned = String(input).replace(',', '.').trim();
   const num = parseFloat(cleaned);
   if (isNaN(num) || num < 0) return null;
@@ -66,6 +65,25 @@ async function adminRequest(path, body = {}) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
+}
+
+// ============================================================
+// Revenue
+// ============================================================
+async function loadRevenue() {
+  try {
+    const res = await fetch(`${API}/api/admin/revenue`, {
+      headers: { 'x-admin-pin': adminPin }
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('rev-day').innerText = `R ${data.revenue.day.toFixed(2)}`;
+      document.getElementById('rev-month').innerText = `R ${data.revenue.month.toFixed(2)}`;
+      document.getElementById('rev-year').innerText = `R ${data.revenue.year.toFixed(2)}`;
+    }
+  } catch (err) {
+    console.error("Failed to load revenue", err);
+  }
 }
 
 // ============================================================
@@ -128,6 +146,7 @@ function enterAdmin() {
   document.getElementById('staff-badge').textContent = staffName;
   switchTab('alerts');
   loadAlerts();
+  loadRevenue(); // Load Revenue on login
 }
 
 // ============================================================
@@ -149,6 +168,96 @@ function switchTab(name) {
   }
   if (name === 'transactions' && !document.getElementById('transactions-tbody').dataset.loaded) {
     loadTransactions();
+  }
+  if (name === 'customers' && !document.getElementById('customers-tbody').dataset.loaded) {
+    loadCustomers();
+  }
+}
+
+// ============================================================
+// Customers & History
+// ============================================================
+async function loadCustomers() {
+  const tbody = document.getElementById('customers-tbody');
+  tbody.innerHTML = '<tr><td colspan="4" class="empty">Loading…</td></tr>';
+  try {
+    const res = await fetch(`${API}/api/admin/customer/list`, {
+      headers: { 'x-admin-pin': adminPin }
+    });
+    const data = await res.json();
+    
+    if (!data.success || !data.customers) {
+      throw new Error(data.error || "Failed to load customers");
+    }
+
+    if (data.customers.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty">No customers found</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.customers.map(c => `
+      <tr>
+        <td>${c.id}</td>
+        <td>${escapeHtml(c.name || 'Unknown')}</td>
+        <td>${escapeHtml(c.phoneNumber)}</td>
+        <td>
+          <button class="btn btn-primary btn-sm" data-history-id="${c.id}" data-history-name="${escapeHtml(c.name || 'Customer')}">
+            View History
+          </button>
+        </td>
+      </tr>
+    `).join('');
+    tbody.dataset.loaded = '1';
+
+    tbody.querySelectorAll('[data-history-id]').forEach(btn => {
+      btn.addEventListener('click', () => openHistoryModal(
+        parseInt(btn.dataset.historyId, 10),
+        btn.dataset.historyName
+      ));
+    });
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="4" class="empty" style="color:#f87171;">${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+async function openHistoryModal(customerId, customerName) {
+  const modal = document.getElementById('modal-history');
+  const content = document.getElementById('history-content');
+  const sub = document.getElementById('history-sub');
+  
+  document.getElementById('history-title').innerText = `History: ${customerName}`;
+  sub.innerText = "Fetching last 10 shopping trips...";
+  content.innerHTML = '<div class="empty">Loading...</div>';
+  modal.classList.add('show');
+
+  try {
+    const res = await fetch(`${API}/api/admin/customer/history?customerId=${customerId}`, {
+      headers: { 'x-admin-pin': adminPin }
+    });
+    const data = await res.json();
+
+    if (data.success && data.history.length > 0) {
+      sub.innerText = `${data.history.length} trips found`;
+      content.innerHTML = data.history.map(session => `
+        <div class="history-trip">
+          <div class="history-trip-header">
+            <span>Trip #${session.id}</span>
+            <span>R ${(session.totalCents / 100).toFixed(2)}</span>
+          </div>
+          <div class="history-items">
+            <ul>
+              ${session.items.map(i => `<li>${i.quantity}x ${escapeHtml(i.product.name)}</li>`).join('')}
+            </ul>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      sub.innerText = "No trips found";
+      content.innerHTML = '<div class="empty">This customer hasn\'t made any purchases yet.</div>';
+    }
+  } catch (err) {
+    sub.innerText = "Error";
+    content.innerHTML = `<div class="empty" style="color:#f87171;">${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -561,6 +670,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('transactions-tbody').dataset.loaded = '';
     loadTransactions();
   });
+  document.getElementById('reload-customers-btn').addEventListener('click', () => {
+    document.getElementById('customers-tbody').dataset.loaded = '';
+    loadCustomers();
+  });
 
   document.getElementById('add-staff-btn').addEventListener('click', () => {
     document.getElementById('modal-add-staff').classList.add('show');
@@ -582,6 +695,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('modal-tags').classList.remove('show');
   });
   document.getElementById('add-tag-btn').addEventListener('click', addTag);
+
+  document.getElementById('close-history-modal').addEventListener('click', () => {
+    document.getElementById('modal-history').classList.remove('show');
+  });
 
   if (adminPin && staffName) {
     enterAdmin();

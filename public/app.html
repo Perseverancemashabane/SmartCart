@@ -859,6 +859,17 @@
           </div>
         </div>
         <div class="user-badge-wrapper" id="auth-badge-pairing"></div>
+                <div class="user-badge-wrapper" id="auth-badge-pairing"></div>
+        
+        <!-- ADD THIS LINE RIGHT HERE -->
+        <a href="/history.html" class="btn-list-link" style="margin-left: 10px;">
+          <i class="fa-solid fa-clock-rotate-left"></i> <span class="list-link-text">History</span>
+        </a>
+
+        <div class="system-status">
+          <span class="pulse-dot active"></span>
+          <span class="status-text">Station Gateway Online</span>
+        </div>
         <div class="system-status">
           <span class="pulse-dot active"></span>
           <span class="status-text">Station Gateway Online</span>
@@ -879,22 +890,6 @@
               <i class="fa-solid fa-camera"></i> Scan Cart QR Code
             </button>
 
-            <!-- DEV/TESTING ONLY -->
-            <div class="dev-pairing-panel">
-              <div class="dev-pairing-label">
-                <i class="fa-solid fa-flask"></i> Developer Testing Mode
-              </div>
-              <div class="manual-input-group">
-                <div class="input-with-icon">
-                  <i class="fa-solid fa-barcode"></i>
-                  <input type="text" id="input-cart-id" placeholder="e.g. cart_004" autocomplete="off" spellcheck="false" value="cart_004">
-                </div>
-                <button id="btn-pair-manual" class="btn btn-secondary">
-                  <i class="fa-solid fa-link"></i> Pair Cart
-                </button>
-              </div>
-              <p class="dev-pairing-note">Remove this panel before the production demo.</p>
-            </div>
           </div>
         </div>
       </main>

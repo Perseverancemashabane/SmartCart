@@ -1,41 +1,34 @@
-import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-import { getSessionFromCookies } from "@/lib/auth";
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { getSessionFromCookies } from '@/lib/auth';
 
-export const runtime = "nodejs";
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-const prisma = globalForPrisma.prisma ?? new PrismaClient();
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
-
-export async function GET(req: NextRequest) {
+export async function GET(request: Request) {
   try {
-    // 1. Authenticate
-    const customer = await getSessionFromCookies(req);
-    if (!customer || !customer.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // 1. Get the session using the exact same method as your working routes
+    const session = await getSessionFromCookies(request.headers.get('cookie'));
+
+    if (!session || !session.customerId) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    // 2. Fetch sessions for this customer
-    const sessions = await (prisma as any).cartSession.findMany({
+    // 2. Fetch the sessions for this customer
+    const sessions = await prisma.cartSession.findMany({
       where: { 
-        customerId: customer.id 
+        customerId: session.customerId 
       },
       include: {
         items: {
-          include: {
-            product: true
-          }
+          include: { product: true }
         }
       },
       orderBy: { id: "desc" },
       take: 20 
     });
 
-    // 3. Format the data for the frontend
+    // 3. Format the data
     const history = sessions.map((s: any) => {
       const groupedItems: any = {};
       
-      // Group items (so 2x Milk becomes one line)
       (s.items || []).forEach((item: any) => {
         const name = item.product ? item.product.name : "Unknown Item";
         if (!groupedItems[name]) {
@@ -54,8 +47,8 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true, history });
-  } catch (err: any) {
-    console.error("[my-history] failed:", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+  } catch (error: any) {
+    console.error('Error in /api/customers/my-history:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

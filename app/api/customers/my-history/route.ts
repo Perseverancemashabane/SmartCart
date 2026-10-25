@@ -10,17 +10,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    // Fetch ONLY successful sessions
+    // Fetch ALL sessions for this customer, BUT only ones where money was actually spent
     const sessions = await prisma.cartSession.findMany({
       where: { 
         customerId: session.customerId,
-        // Only grab trips that were actually paid for
-        OR: [
-          { paymentStatus: "paid" },
-          { paymentStatus: "completed" },
-          { paymentStatus: "success" }
-        ],
-        totalCents: { gt: 0 } // And make sure the total is greater than 0
+        totalCents: { gt: 0 } // Only show trips that cost money
       },
       include: {
         items: {

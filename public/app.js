@@ -1,24 +1,13 @@
 /**
- * SmartCart IoT - Full Application Logic (v10)
- * Cart lifecycle + auth + wallet payment + shopping list + review flow
- *
- * v10 changes:
- *  - When session disappears (paid/cancelled/anti-theft), the phone
- *    returns to pairing view — unless the receipt modal is showing
+ * SmartCart IoT - Full Application Logic (v11)
+ * Removed Dev Button, cleaned up polling
  */
 
-// ==========================================================================
-// 1. EventBus
-// ==========================================================================
 class EventBus {
   constructor() { this.events = {}; }
   on(event, listener) {
     if (!this.events[event]) this.events[event] = [];
     this.events[event].push(listener);
-  }
-  off(event, listenerToRemove) {
-    if (!this.events[event]) return;
-    this.events[event] = this.events[event].filter(l => l !== listenerToRemove);
   }
   emit(event, data) {
     if (!this.events[event]) return;
@@ -27,10 +16,6 @@ class EventBus {
 }
 const appBus = new EventBus();
 
-
-// ==========================================================================
-// 2. CartStateModule
-// ==========================================================================
 class CartStateModule {
   constructor(bus) {
     this.bus = bus;
@@ -68,7 +53,6 @@ class CartStateModule {
     this.isDockedAtStation = newState;
     this.bus.emit('station:changed', { isDocked: this.isDockedAtStation });
   }
-  toggleDockedState() { this.setDockedState(!this.isDockedAtStation); }
   getSubtotal() { return this.items.reduce((s, i) => s + i.price * i.quantity, 0); }
   getVatAmount() { return this.getSubtotal() * this.vatRate; }
   getTotalAmount() { return this.getSubtotal() + this.getVatAmount(); }
@@ -91,10 +75,6 @@ class CartStateModule {
   }
 }
 
-
-// ==========================================================================
-// 3. QR Scanner
-// ==========================================================================
 class QRScannerModule {
   constructor(bus) {
     this.bus = bus;
@@ -106,12 +86,9 @@ class QRScannerModule {
     this.btnStartQr = document.getElementById('btn-start-qr');
     this.btnCloseQr = document.getElementById('btn-close-qr');
     this.qrModal = document.getElementById('qr-modal');
-    this.inputCartId = document.getElementById('input-cart-id');
-    this.btnPairManual = document.getElementById('btn-pair-manual');
 
     if (this.btnStartQr) this.btnStartQr.addEventListener('click', () => this.openScannerModal());
     if (this.btnCloseQr) this.btnCloseQr.addEventListener('click', () => this.closeScannerModal());
-    if (this.btnPairManual) this.btnPairManual.addEventListener('click', () => this.handleManualPairing());
   }
   openScannerModal() {
     if (!this.qrModal) return;
@@ -125,7 +102,6 @@ class QRScannerModule {
           (decodedText) => this.onScanSuccess(decodedText),
           () => {}
         ).catch(err => {
-          console.warn("Camera access failed:", err);
           this.showCameraFallbackNotice();
         });
         this.isScanning = true;
@@ -133,7 +109,6 @@ class QRScannerModule {
         this.showCameraFallbackNotice();
       }
     } catch (e) {
-      console.warn("Camera init exception:", e);
       this.showCameraFallbackNotice();
     }
   }
@@ -144,7 +119,6 @@ class QRScannerModule {
         <div style="padding: 30px; text-align: center; color: #94a3b8;">
           <i class="fa-solid fa-camera-slash" style="font-size: 36px; margin-bottom: 12px; color: #f59e0b;"></i>
           <p style="font-size: 0.9rem; font-weight: 600; color: #fff;">Camera Access Unavailable</p>
-          <p style="font-size: 0.78rem; margin-top: 6px;">Please use manual Cart ID entry.</p>
         </div>
       `;
     }
@@ -164,25 +138,10 @@ class QRScannerModule {
     if (cartId.includes('cart_id=')) {
       cartId = cartId.split('cart_id=')[1].split('&')[0];
     }
-    this.triggerPairing(cartId || 'cart_004');
-  }
-  handleManualPairing() {
-    const val = this.inputCartId ? this.inputCartId.value.trim() : '';
-    if (!val) {
-      appBus.emit('ui:toast', { message: 'Please enter a valid Cart ID', type: 'warning' });
-      return;
-    }
-    this.triggerPairing(val);
-  }
-  triggerPairing(cartId) {
-    this.bus.emit('qr:scanned', { cartId });
+    this.bus.emit('qr:scanned', { cartId: cartId || 'cart_004' });
   }
 }
 
-
-// ==========================================================================
-// 4. UIController
-// ==========================================================================
 class UIController {
   constructor(bus, cartModule) {
     this.bus = bus;
@@ -245,23 +204,14 @@ class UIController {
       });
     }
     this.bus.on('cart:updated', (state) => this.renderCartState(state));
-    this.bus.on('cart:item_added', (data) => {
-      this.showToast(`RFID Scanned: + ${data.item.name}`, 'success');
-      this.highlightItemCard(data.item.sku, 'flash-add');
-    });
-    this.bus.on('cart:item_removed', (data) => {
-      this.showToast(`Item Removed: ${data.item.name}`, 'info');
-      this.highlightItemCard(data.item.sku, 'flash-remove');
-    });
     this.bus.on('station:changed', (data) => this.renderStationBanner(data.isDocked));
 
     if (this.btnCheckout) {
       this.btnCheckout.addEventListener('click', () => {
         if (this.cartModule.items.length === 0) {
-          this.showToast('Your cart is empty! Add items before checking out.', 'warning');
+          this.showToast('Your cart is empty!', 'warning');
           return;
         }
-        // ALWAYS show review screen first
         appBus.emit('review:open');
       });
     }
@@ -313,9 +263,7 @@ class UIController {
             <div class="item-icon-box"><i class="fa-solid ${item.icon || 'fa-box'}"></i></div>
             <div class="item-details">
               <h4>${item.name}</h4>
-              <div class="item-meta">
-                <span>Qty:</span><span class="qty-val">${item.quantity}</span>
-              </div>
+              <div class="item-meta"><span>Qty:</span><span class="qty-val">${item.quantity}</span></div>
             </div>
           </div>
           <div class="item-right">
@@ -326,14 +274,6 @@ class UIController {
           </div>
         </div>`;
     }).join('');
-  }
-  highlightItemCard(sku, animationClass) {
-    const card = document.getElementById(`card-${sku}`);
-    if (card) {
-      card.classList.remove('flash-add', 'flash-remove');
-      void card.offsetWidth;
-      card.classList.add(animationClass);
-    }
   }
   renderStationBanner(isDocked) {
     if (!this.stationStatusBanner) return;
@@ -365,7 +305,7 @@ class UIController {
       if (this.checkoutBtnText) this.checkoutBtnText.textContent = 'Cart is Empty';
       if (this.checkoutTooltip) {
         this.checkoutTooltip.classList.remove('hidden');
-        this.checkoutTooltip.innerHTML = '<i class="fa-solid fa-info-circle"></i> Add items using RFID scanner to proceed.';
+        this.checkoutTooltip.innerHTML = '<i class="fa-solid fa-info-circle"></i> Add items to proceed.';
       }
     }
   }
@@ -377,9 +317,7 @@ class UIController {
       return;
     }
     this.watcherBanner.classList.remove('hidden');
-    this.watcherBannerItems.innerHTML = requests
-      .map(r => `<span>${r.name}</span>`)
-      .join('');
+    this.watcherBannerItems.innerHTML = requests.map(r => `<span>${r.name}</span>`).join('');
   }
   showToast(message, type = 'info') {
     if (!this.toastContainer) return;
@@ -398,10 +336,6 @@ class UIController {
   }
 }
 
-
-// ==========================================================================
-// 5. ShoppingListProgressModule
-// ==========================================================================
 class ShoppingListProgressModule {
   constructor(bus, cartModule) {
     this.bus = bus;
@@ -440,9 +374,7 @@ class ShoppingListProgressModule {
   }
   async loadList() {
     try {
-      const res = await fetch(`${window.API_URL}/api/shopping-list/active`, {
-        credentials: 'include'
-      });
+      const res = await fetch(`${window.API_URL}/api/shopping-list/active`, { credentials: 'include' });
       if (!res.ok) return;
       const data = await res.json();
       if (!data.success || !data.list) { this.hideBanner(); return; }
@@ -468,10 +400,6 @@ class ShoppingListProgressModule {
   }
 }
 
-
-// ==========================================================================
-// 6. ReviewModule — Done Shopping → Review → Confirm & Pay
-// ==========================================================================
 class ReviewModule {
   constructor(bus, cartModule, ui) {
     this.bus = bus;
@@ -509,7 +437,6 @@ class ReviewModule {
   openReview() {
     const items = this.cartModule.items;
     const removalRequests = this.cartModule.removalRequests;
-
     this.reviewItemsTitle.textContent = `Items (${items.length})`;
     this.reviewItems.innerHTML = items.map(item => `
       <div class="review-item">
@@ -517,25 +444,19 @@ class ReviewModule {
         <span class="review-item-price">${CartStateModule.formatCurrency(item.price * item.quantity)}</span>
       </div>
     `).join('');
-
     if (removalRequests && removalRequests.length > 0) {
       this.reviewRemovalsSection.style.display = 'block';
-      this.reviewRemovals.innerHTML = removalRequests.map(r => `
-        <div class="review-removal-item">${r.name}</div>
-      `).join('');
+      this.reviewRemovals.innerHTML = removalRequests.map(r => `<div class="review-removal-item">${r.name}</div>`).join('');
     } else {
       this.reviewRemovalsSection.style.display = 'none';
     }
-
     this.reviewTotal.textContent = CartStateModule.formatCurrency(this.cartModule.getTotalAmount());
     this.reviewModal.classList.add('show');
   }
   async confirmAndPay() {
     if (!this.cartModule.cartId) return;
-
     this.btnReviewConfirm.disabled = true;
     this.btnReviewConfirm.textContent = 'Please wait…';
-
     try {
       const res = await fetch(`${window.API_URL}/api/cart/confirm-payment`, {
         method: 'POST',
@@ -544,23 +465,17 @@ class ReviewModule {
         body: JSON.stringify({ cart_id: this.cartModule.cartId })
       });
       const data = await res.json();
-
       if (!res.ok) {
         this.ui.showToast(data.error || 'Could not confirm payment', 'error');
-        this.btnReviewConfirm.disabled = false;
-        this.btnReviewConfirm.textContent = 'Confirm & Pay';
         return;
       }
-
       this.reviewModal.classList.remove('show');
-
       if (this.cartModule.isDockedAtStation) {
         this.bus.emit('checkout:open_modal');
       } else {
         this.dockWaitModal.classList.add('show');
       }
     } catch (err) {
-      console.error('[confirm-payment] error:', err);
       this.ui.showToast('Network error', 'error');
     } finally {
       this.btnReviewConfirm.disabled = false;
@@ -569,28 +484,18 @@ class ReviewModule {
   }
   async cancelDockWait() {
     if (!this.cartModule.cartId) return;
-
     this.btnDockWaitCancel.disabled = true;
     this.btnDockWaitCancel.textContent = 'Cancelling…';
-
     try {
-      const res = await fetch(`${window.API_URL}/api/cart/cancel-payment`, {
+      await fetch(`${window.API_URL}/api/cart/cancel-payment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ cart_id: this.cartModule.cartId })
       });
-      const data = await res.json();
-
-      if (!res.ok) {
-        this.ui.showToast(data.error || 'Could not cancel', 'error');
-        return;
-      }
-
       this.dockWaitModal.classList.remove('show');
       this.ui.showToast('You can continue shopping', 'info');
     } catch (err) {
-      console.error('[cancel-payment] error:', err);
       this.ui.showToast('Network error', 'error');
     } finally {
       this.btnDockWaitCancel.disabled = false;
@@ -605,10 +510,6 @@ class ReviewModule {
   }
 }
 
-
-// ==========================================================================
-// 7. CheckoutModule
-// ==========================================================================
 class CheckoutModule {
   constructor(bus, cartModule, ui) {
     this.bus = bus;
@@ -729,14 +630,10 @@ class CheckoutModule {
       this.closePinModal();
       this.showReceipt('Wallet', data);
       try {
-        await fetch(`${window.API_URL}/api/shopping-list/complete`, {
-          method: 'POST',
-          credentials: 'include'
-        });
+        await fetch(`${window.API_URL}/api/shopping-list/complete`, { method: 'POST', credentials: 'include' });
       } catch (e) { /* silent */ }
     } catch (err) {
-      console.error('[Wallet pay] error:', err);
-      this.pinError.textContent = 'Network error. Please try again.';
+      this.pinError.textContent = 'Network error.';
       this.pinBuffer = '';
       this.renderPinDisplay();
     }
@@ -755,10 +652,9 @@ class CheckoutModule {
       if (data.success && data.authorizationUrl) {
         window.location.href = data.authorizationUrl;
       } else {
-        this.ui.showToast(data.error || 'Payment failed to start', 'error');
+        this.ui.showToast(data.error || 'Payment failed', 'error');
       }
     } catch (err) {
-      console.error('Checkout error:', err);
       this.ui.showToast('Payment initialization failed', 'error');
     }
   }
@@ -800,178 +696,51 @@ class CheckoutModule {
   }
 }
 
-
-// ==========================================================================
-// 8. MockLiveFeedModule (Dev panel)
-// ==========================================================================
 class MockLiveFeedModule {
   constructor(bus, cartModule) {
     this.bus = bus;
     this.cartModule = cartModule;
-    this.isExpanded = false;
-    this.products = [];
     this.initDOM();
     this.bindEvents();
-    this.loadProducts();
   }
   initDOM() {
+    // Debug panel remains hidden (no floating button anymore)
     this.debugPanel = document.getElementById('debug-panel');
-    this.debugHandle = document.getElementById('debug-handle');
-    this.debugToggleText = document.getElementById('debug-toggle-text');
-    this.debugChevron = document.getElementById('debug-chevron');
     this.simBtnToggleDock = document.getElementById('sim-btn-toggle-dock');
-    this.simDockText = document.getElementById('sim-dock-text');
-    this.debugEventLog = document.getElementById('debug-event-log');
     this.simItemsButtons = document.getElementById('sim-items-buttons');
-    if (this.debugPanel) this.debugPanel.style.display = 'none';
-
-    const devBtn = document.createElement('button');
-    devBtn.id = 'dev-panel-toggle';
-    devBtn.innerHTML = '<i class="fa-solid fa-microchip"></i> Dev';
-    devBtn.style.cssText = `
-      position: fixed; bottom: 20px; right: 20px; z-index: 9999;
-      padding: 10px 16px; background: #f59e0b; color: #0f172a;
-      border: none; border-radius: 24px; font-size: 0.85rem;
-      font-weight: 700; cursor: pointer;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-      font-family: inherit; display: flex; align-items: center; gap: 6px;
-    `;
-    document.body.appendChild(devBtn);
+    this.loadProducts();
   }
   async loadProducts() {
     if (!this.simItemsButtons) return;
     try {
       const res = await fetch(`${window.API_URL}/api/products/list`);
       const data = await res.json();
-      if (!data.success || !data.products || data.products.length === 0) {
-        this.simItemsButtons.innerHTML = `<div class="sim-empty">No products in database.</div>`;
-        return;
+      if (data.success && data.products) {
+        this.simItemsButtons.innerHTML = data.products.map(p => `
+          <button class="sim-add-btn" data-rfid="${p.rfidTag || ''}">+ ${p.name}</button>
+        `).join('');
       }
-      this.products = data.products;
-      this.simItemsButtons.innerHTML = data.products.map(p => `
-        <button class="sim-add-btn" data-rfid="${p.rfidTag || ''}" data-name="${p.name}">
-          + ${p.name}<br><span style="color:#94a3b8;font-size:0.7rem;">R${p.priceRands}</span>
-        </button>
-      `).join('');
-      this.simItemsButtons.querySelectorAll('.sim-add-btn').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-          const rfid = e.currentTarget.getAttribute('data-rfid');
-          const name = e.currentTarget.getAttribute('data-name');
-          if (!rfid) {
-            this.bus.emit('ui:toast', { message: 'Product has no tag', type: 'error' });
-            return;
-          }
-          await this.scanItem(rfid, name);
-        });
-      });
-    } catch (err) {
-      console.error('Failed to load products:', err);
-      this.simItemsButtons.innerHTML = `<div class="sim-error">Failed to load products.</div>`;
-    }
-  }
-  async scanItem(rfidTag, name) {
-    if (!this.cartModule.cartId) {
-      this.bus.emit('ui:toast', { message: 'Pair a cart first', type: 'warning' });
-      return;
-    }
-    try {
-      const res = await fetch(`${window.API_URL}/api/hardware/scan-item`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          cart_id: this.cartModule.cartId,
-          rfid_tag: rfidTag,
-          action: 'toggle'
-        })
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        this.bus.emit('ui:toast', { message: data.error || 'Scan failed', type: 'error' });
-        return;
-      }
-      const action = data.session?.lastAction?.action || 'added';
-      this.bus.emit('ui:toast', {
-        message: `${action === 'added' ? 'Added' : 'Removed'}: ${name}`,
-        type: action === 'added' ? 'success' : 'info'
-      });
-    } catch (err) {
-      console.error('Scan error:', err);
-      this.bus.emit('ui:toast', { message: 'Network error', type: 'error' });
-    }
+    } catch (err) { /* silent */ }
   }
   bindEvents() {
-    if (this.debugHandle) this.debugHandle.addEventListener('click', () => this.togglePanel());
-    const devBtn = document.getElementById('dev-panel-toggle');
-    if (devBtn) devBtn.addEventListener('click', () => this.togglePanel());
-
     if (this.simBtnToggleDock) {
       this.simBtnToggleDock.addEventListener('click', async () => {
         const cartId = this.cartModule.cartId;
-        if (!cartId) {
-          this.bus.emit('ui:toast', { message: 'Pair a cart first', type: 'warning' });
-          return;
-        }
+        if (!cartId) return;
         const isCurrentlyDocked = this.cartModule.isDockedAtStation;
         const endpoint = isCurrentlyDocked ? 'station-undock' : 'station-dock';
-        this.simBtnToggleDock.disabled = true;
-        this.simBtnToggleDock.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Working...';
-        try {
-          const res = await fetch(`${window.API_URL}/api/hardware/${endpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              station_id: 'STATION_BASE_01',
-              cart_rfid_tag: cartId,
-              cart_id: cartId
-            })
-          });
-          const data = await res.json();
-          if (!res.ok || !data.success) {
-            this.bus.emit('ui:toast', { message: data.error || 'Dock failed', type: 'error' });
-          } else {
-            const newDocked = Boolean(data.session?.isDocked);
-            this.cartModule.setDockedState(newDocked);
-            this.bus.emit('ui:toast', {
-              message: newDocked ? 'Cart docked' : 'Cart undocked',
-              type: 'success'
-            });
-          }
-        } catch (err) {
-          console.error('Dock toggle error:', err);
-          this.bus.emit('ui:toast', { message: 'Network error', type: 'error' });
-        } finally {
-          this.simBtnToggleDock.disabled = false;
-          const currently = this.cartModule.isDockedAtStation;
-          this.simBtnToggleDock.innerHTML = currently
-            ? '<i class="fa-solid fa-plug"></i> Undock Cart'
-            : '<i class="fa-solid fa-plug"></i> Simulate Station Docking (Unlock Pay)';
-        }
+        await fetch(`${window.API_URL}/api/hardware/${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ cart_id: cartId })
+        });
+        this.cartModule.setDockedState(!isCurrentlyDocked);
       });
-    }
-    const clrBtn = document.getElementById('sim-clear-all');
-    if (clrBtn) clrBtn.addEventListener('click', () => this.cartModule.clearCart());
-  }
-  togglePanel() {
-    if (!this.debugPanel) return;
-    this.isExpanded = !this.isExpanded;
-    if (this.isExpanded) {
-      this.debugPanel.style.display = 'block';
-      this.debugPanel.classList.remove('collapsed');
-      if (this.debugToggleText) this.debugToggleText.textContent = 'Collapse Controls';
-    } else {
-      this.debugPanel.style.display = 'none';
-      this.debugPanel.classList.add('collapsed');
-      if (this.debugToggleText) this.debugToggleText.textContent = 'Expand Controls';
     }
   }
 }
 
-
-// ==========================================================================
-// 9. Auth Module
-// ==========================================================================
 class AuthModule {
   constructor(bus) {
     this.bus = bus;
@@ -996,7 +765,6 @@ class AuthModule {
       this.renderAuthBadge(badge1);
       this.renderAuthBadge(badge2);
     } catch (err) {
-      console.error('Auth check failed:', err);
       this.showLoginGate();
     }
   }
@@ -1014,9 +782,9 @@ class AuthModule {
         <span>${displayName}</span>
         <span class="wallet-pill"><i class="fa-solid fa-wallet"></i> R ${wallet}</span>
       </a>
-      <a href="/list.html" class="btn-list-link" title="My Shopping List">
-        <i class="fa-solid fa-list-check"></i>
-        <span class="list-link-text">My List</span>
+      <a href="/history.html" class="btn-list-link" title="My Shopping History">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+        <span class="list-link-text">History</span>
       </a>
       <button class="btn-logout" id="btn-logout-${container.id}">
         <i class="fa-solid fa-right-from-bracket"></i> Logout
@@ -1028,29 +796,19 @@ class AuthModule {
   async logout() {
     try {
       if (window.cartModule && window.cartModule.cartId) {
-        try {
-          await fetch(`${window.API_URL}/api/cart/reset`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ cart_id: window.cartModule.cartId })
-          });
-        } catch (e) { console.warn('Cart reset on logout failed:', e); }
+        await fetch(`${window.API_URL}/api/cart/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ cart_id: window.cartModule.cartId })
+        });
       }
-      await fetch(`${window.API_URL}/api/auth/logout`, {
-        method: 'POST', credentials: 'include'
-      });
+      await fetch(`${window.API_URL}/api/auth/logout`, { method: 'POST', credentials: 'include' });
       window.location.href = '/login.html';
-    } catch (err) {
-      console.error('Logout failed:', err);
-    }
+    } catch (err) { console.error(err); }
   }
 }
 
-
-// ==========================================================================
-// 10. App Initialization
-// ==========================================================================
 document.addEventListener('DOMContentLoaded', () => {
   const isLocalhost = window.location.hostname === 'localhost';
   window.API_URL = isLocalhost ? 'http://localhost:3000' : 'https://smart-cart-5qod.vercel.app';
@@ -1066,15 +824,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const mockFeed = new MockLiveFeedModule(appBus, cartModule);
   const authModule = new AuthModule(appBus);
 
-  // Auto-pair from URL
   const urlParams = new URLSearchParams(window.location.search);
   let urlCartId = urlParams.get('cart_id');
-
-  if (!urlCartId && window.location.hash) {
-    const hash = window.location.hash.substring(1);
-    const hashParams = new URLSearchParams(hash);
-    urlCartId = hashParams.get('cart');
-  }
 
   if (urlCartId) {
     localStorage.setItem('pendingCartId', urlCartId);
@@ -1084,21 +835,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (urlCartId) {
-    const cartInput = document.getElementById('input-cart-id');
-    if (cartInput) cartInput.value = urlCartId;
-
     setTimeout(() => {
       if (authModule.customer) {
         appBus.emit('qr:scanned', { cartId: urlCartId });
         localStorage.removeItem('pendingCartId');
-      } else {
-        const checkLogin = setInterval(() => {
-          if (authModule.customer) {
-            clearInterval(checkLogin);
-            appBus.emit('qr:scanned', { cartId: urlCartId });
-            localStorage.removeItem('pendingCartId');
-          }
-        }, 1000);
       }
     }, 800);
   }
@@ -1118,13 +858,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       cartModule.pairCart(data.cartId);
     } catch (err) {
-      console.error('[Pair] Fetch failed:', err);
       appBus.emit('ui:toast', { message: 'Pairing failed', type: 'error' });
     }
-  });
-
-  appBus.on('cart:paired', () => {
-    localStorage.removeItem('pendingCartId');
   });
 
   let lastServerSignature = '';
@@ -1132,26 +867,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function applyServerSession(session) {
     if (!session) {
-      // Session is gone (paid, cancelled, reset, or anti-theft cancel)
-      // BUT: if the receipt modal is showing, keep it visible.
       const receiptModal = document.getElementById('modal-receipt');
       const receiptVisible = receiptModal && !receiptModal.classList.contains('hidden');
-
-      if (receiptVisible) {
-        // Payment just succeeded — keep receipt on screen.
-        // Do NOT unpair here; user dismisses with the button.
-        return;
-      }
-
-      // Otherwise: session is gone without payment — reset the phone
-      // back to the pairing view.
+      if (receiptVisible) return;
       if (cartModule.cartId) {
         cartModule.items = [];
         cartModule.removalRequests = [];
         cartModule.setDockedState(false);
         lastServerSignature = '';
         lastDockedState = false;
-        cartModule.unpairCart();  // → cart:unpaired → switchView('view-pairing')
+        cartModule.unpairCart();
       }
       return;
     }
@@ -1181,7 +906,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (nowDocked && !wasDocked) {
       reviewModule.onDocked();
     }
-
     appBus.emit('cart:updated', cartModule.getStateSummary());
   }
 
@@ -1202,63 +926,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     setTimeout(pollCart, 2000);
   }
-  appBus.on('cart:paired', () => { lastServerSignature = ''; });
-  appBus.on('cart:unpaired', () => { lastServerSignature = ''; });
   pollCart();
-
-  // Paystack callback
-  const paid = urlParams.get('paid');
-  const paidCartId = urlParams.get('cart_id');
-  const paidReference = urlParams.get('reference');
-
-  if (paid === 'true' && paidCartId && paidReference) {
-    (async () => {
-      try {
-        const verifyRes = await fetch(`${window.API_URL}/api/checkout/verify`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ reference: paidReference })
-        });
-        const verifyData = await verifyRes.json();
-
-        if (!verifyRes.ok) {
-          console.error('[Paystack verify] Failed:', verifyData.error);
-          appBus.emit('ui:toast', {
-            message: verifyData.error || 'Payment verification failed',
-            type: 'error'
-          });
-          return;
-        }
-
-        try {
-          await fetch(`${window.API_URL}/api/shopping-list/complete`, {
-            method: 'POST',
-            credentials: 'include'
-          });
-        } catch (e) { /* silent */ }
-
-        await fetch(`${window.API_URL}/api/cart/reset`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ cart_id: paidCartId })
-        });
-
-        window.history.replaceState({}, '', window.location.pathname);
-        appBus.emit('ui:toast', {
-          message: `Payment successful! R ${verifyData.amountRands} received.`,
-          type: 'success'
-        });
-      } catch (err) {
-        console.error('[Paystack] Verify flow failed:', err);
-        appBus.emit('ui:toast', {
-          message: 'Payment verification failed',
-          type: 'error'
-        });
-      }
-    })();
-  }
-
-  console.log('SmartCart ready. API:', window.API_URL);
 });

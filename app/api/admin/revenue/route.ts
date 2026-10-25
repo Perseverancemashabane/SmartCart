@@ -11,9 +11,19 @@ export async function GET(req: NextRequest) {
   if (adminPin !== "9999") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    // Find all paid sessions
+    // 1. Fetch ALL sessions that are not 'unpaid'
     const sessions = await (prisma as any).cartSession.findMany({
-      where: { paymentStatus: "paid" },
+      where: { 
+        OR: [
+          { paymentStatus: "paid" },
+          { paymentStatus: "completed" }
+        ]
+      },
+    });
+
+    // 2. Fetch ALL successful wallet transactions
+    const transactions = await (prisma as any).transaction.findMany({
+      where: { status: "completed" } // Adjust if your wallet uses a different status
     });
 
     const now = new Date();
@@ -23,12 +33,23 @@ export async function GET(req: NextRequest) {
 
     let dayRevenue = 0, monthRevenue = 0, yearRevenue = 0;
 
+    // Helper function to add revenue based on date
+    const addRevenue = (dateStr: any, amount: number) => {
+      if (!dateStr) return;
+      const date = new Date(dateStr);
+      if (date >= startOfDay) dayRevenue += amount;
+      if (date >= startOfMonth) monthRevenue += amount;
+      if (date >= startOfYear) yearRevenue += amount;
+    };
+
+    // Add up sessions
     sessions.forEach((s: any) => {
-      // Use createdAt (the schema uses @map("created_at"))
-      const sessionDate = s.createdAt ? new Date(s.createdAt) : new Date();
-      if (sessionDate >= startOfDay) dayRevenue += s.totalCents || 0;
-      if (sessionDate >= startOfMonth) monthRevenue += s.totalCents || 0;
-      if (sessionDate >= startOfYear) yearRevenue += s.totalCents || 0;
+      addRevenue(s.createdAt, s.totalCents || 0);
+    });
+
+    // Add up transactions (in case they aren't in the sessions)
+    transactions.forEach((t: any) => {
+      addRevenue(t.createdAt, t.amountCents || 0);
     });
 
     return NextResponse.json({

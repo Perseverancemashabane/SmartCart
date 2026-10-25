@@ -9,21 +9,15 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 export async function GET(req: NextRequest) {
   try {
-    // 1. Authenticate the customer
     const customer = await getSessionFromCookies(req);
     if (!customer || !customer.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 2. Fetch successful sessions from the CartSession table
+    // Fetch ALL sessions for this customer (no payment filter yet)
     const sessions = await (prisma as any).cartSession.findMany({
       where: { 
-        customerId: customer.id,
-        OR: [
-          { paymentStatus: "paid" },
-          { paymentStatus: "completed" },
-          { paymentStatus: "success" }
-        ]
+        customerId: customer.id 
       },
       include: {
         items: { include: { product: true } },
@@ -32,15 +26,11 @@ export async function GET(req: NextRequest) {
       take: 20 
     });
 
-    // 3. Format and group items (so two tags of Milk become 2x Milk)
     const history = sessions.map((s: any) => {
       const groupedItems: any = {};
-      
       s.items.forEach((item: any) => {
         const name = item.product ? item.product.name : "Unknown Item";
-        if (!groupedItems[name]) {
-          groupedItems[name] = { name, quantity: 0 };
-        }
+        if (!groupedItems[name]) groupedItems[name] = { name, quantity: 0 };
         groupedItems[name].quantity += item.quantity;
       });
 
@@ -48,16 +38,13 @@ export async function GET(req: NextRequest) {
         id: s.id,
         date: s.createdAt || new Date(),
         totalCents: s.totalCents || 0,
+        status: s.paymentStatus, // We added the status here
         items: Object.values(groupedItems)
       };
     });
 
-    // Filter out empty ones (just in case)
-    const validHistory = history.filter((h: any) => h.items.length > 0);
-
-    return NextResponse.json({ success: true, history: validHistory });
+    return NextResponse.json({ success: true, history });
   } catch (err: any) {
-    console.error("[my-history] error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

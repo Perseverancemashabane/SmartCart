@@ -226,7 +226,7 @@ async function openHistoryModal(customerId, customerName) {
   const sub = document.getElementById('history-sub');
   
   document.getElementById('history-title').innerText = `History: ${customerName}`;
-  sub.innerText = "Fetching last 10 shopping trips...";
+  sub.innerText = "Fetching last 10 successful transactions...";
   content.innerHTML = '<div class="empty">Loading...</div>';
   modal.classList.add('show');
 
@@ -237,23 +237,25 @@ async function openHistoryModal(customerId, customerName) {
     const data = await res.json();
 
     if (data.success && data.history.length > 0) {
-      sub.innerText = `${data.history.length} trips found`;
-      content.innerHTML = data.history.map(session => `
+      sub.innerText = `${data.history.length} successful trips found`;
+      content.innerHTML = data.history.map(trip => `
         <div class="history-trip">
           <div class="history-trip-header">
-            <span>Trip #${session.id}</span>
-            <span>R ${(session.totalCents / 100).toFixed(2)}</span>
+            <span>Transaction #${trip.id} - ${formatDate(trip.date)}</span>
+            <span>R ${(trip.totalCents / 100).toFixed(2)}</span>
           </div>
           <div class="history-items">
             <ul>
-              ${session.items.map(i => `<li>${i.quantity}x ${escapeHtml(i.product.name)}</li>`).join('')}
+              ${trip.items && trip.items.length > 0 
+                ? trip.items.map(i => `<li>${i.quantity}x ${escapeHtml(i.product ? i.product.name : 'Unknown')}</li>`).join('') 
+                : '<li>No items recorded</li>'}
             </ul>
           </div>
         </div>
       `).join('');
     } else {
-      sub.innerText = "No trips found";
-      content.innerHTML = '<div class="empty">This customer hasn\'t made any purchases yet.</div>';
+      sub.innerText = "No successful trips found";
+      content.innerHTML = '<div class="empty">This customer hasn\'t made any successful purchases yet.</div>';
     }
   } catch (err) {
     sub.innerText = "Error";

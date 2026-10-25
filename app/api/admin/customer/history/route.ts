@@ -14,24 +14,33 @@ export async function GET(req: NextRequest) {
   if (!customerId) return NextResponse.json({ error: "Missing customerId" }, { status: 400 });
 
   try {
-    const sessions = await (prisma as any).cartSession.findMany({
+    // 1. Fetch transactions for this specific customer
+    const transactions = await (prisma as any).transaction.findMany({
       where: { 
-        customerId: parseInt(customerId),
-        // ONLY fetch successful payments
-        OR: [
-          { paymentStatus: "paid" },
-          { paymentStatus: "completed" }
-        ]
+        session: { customerId: parseInt(customerId) } 
       },
       include: {
-        items: { include: { product: true } },
+        session: {
+          include: {
+            items: { include: { product: true } }
+          }
+        }
       },
-      orderBy: { id: "desc" },
-      take: 10 // Only get the most recent 10
+      orderBy: { createdAt: "desc" }, // Most recent first
+      take: 10 // Only the last 10
     });
 
-    return NextResponse.json({ success: true, history: sessions });
+    // 2. Format them so the frontend can read them easily
+    const history = transactions.map((t: any) => ({
+      id: t.id,
+      date: t.createdAt,
+      totalCents: t.amountCents,
+      items: t.session.items
+    }));
+
+    return NextResponse.json({ success: true, history });
   } catch (err: any) {
+    console.error("[customer/history] failed:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

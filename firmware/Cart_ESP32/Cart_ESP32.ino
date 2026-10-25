@@ -1,21 +1,14 @@
 /*
  * ============================================================
- *  SmartCart — ESP32 Cart Firmware  (v7 — wallet fallback fixed)
+ *  SmartCart — ESP32 Cart Firmware  (v19 — slow Pay PIN poll)
  * ============================================================
  *  Cart ID: cart_004
- *  Backend: https://smart-cart-5qod.vercel.app
  *
- *  Docking + payment logic:
- *   1. Cart in scanning → customer docks
- *   2. Backend sets isDocked: true
- *   3. Cart detects it → "Payment Unlocked"
- *   4. Website mode: stay on that screen until session goes null
- *      (phone paid) → SUCCESS
- *      Press # → PIN entry (auto-login then wallet pay)
- *      Press 0 on empty PIN → back to "Payment Unlocked"
- *   5. Manual mode: 1.5s on "Payment Unlocked" then PIN entry
- *      Same 0/# rules
- *   6. Only after confirmed payment → SUCCESS → 6s → IDLE
+ *  Fix in v19:
+ *   - ST_PAY_PIN now polls only every 5 seconds instead of every
+ *     1 second. Gives the keypad 4 out of every 5 seconds of
+ *     uninterrupted responsiveness while still allowing the
+ *     anti-theft alarm to fire.
  * ============================================================
  */
 
@@ -41,11 +34,11 @@ const char* CART_ID       = "cart_004";
 const char* COOKIE_NAME   = "smartcart_session";
 const char* PAIR_BASE_URL = "https://smart-cart-5qod.vercel.app/app.html?cart_id=";
 
-// Extra colors
 #define ST77XX_NAVY   0x000F
 #define ST77XX_DARK   0x0841
 #define ST77XX_ACCENT 0x05BF
 #define ST77XX_MUTED  0x8410
+#define ST77XX_AMBER  0xFD20
 
 // ============================================================
 //  PIN DEFINITIONS
@@ -98,10 +91,12 @@ enum CartState {
   ST_MANUAL_PIN,
   ST_SCAN_MODE,
   ST_CONFIRM_CANCEL,
-  ST_CART_CLEARED,
   ST_PAYMENT_UNLOCKED,
   ST_PAY_PIN,
-  ST_PAYMENT_DONE
+  ST_PAYMENT_DONE,
+  ST_ALARM,
+  ST_ALARM_PIN,
+  ST_ALARM_CHOICE
 };
 
 CartState currentState = ST_IDLE;
@@ -116,6 +111,7 @@ unsigned long lastUIDAt = 0;
 unsigned long errorShownAt = 0;
 unsigned long stateEnteredAt = 0;
 unsigned long lastPollAt = 0;
+unsigned long lastBuzzToggleAt = 0;
 
 long subtotalCents = 0;
 long taxCents = 0;
@@ -126,11 +122,19 @@ String sessionItems = "";
 bool sawActiveSession = false;
 bool isManualMode = false;
 
+String paymentStatus = "unpaid";
+
+bool lastKnownDocked = false;
+bool buzzerOn = false;
+
 // ============================================================
 //  FORWARD DECLARATIONS
 // ============================================================
 void tftTextRight(const char* text, int16_t xRight, int16_t y,
                   uint16_t color = ST77XX_WHITE, uint8_t size = 2);
+void resetAllState();
+void triggerAntiTheft();
+void globalPoll();
 
 // ============================================================
 //  BEEP
@@ -301,8 +305,53 @@ bool pairCart() {
 }
 
 // ============================================================
-//  SYNC — returns 1=session+docked, 0=session not docked,
-//         -1=no session, -2=error
+//  CONFIRM PAYMENT
+// ============================================================
+bool confirmPayment() {
+  String body = "{\"cart_id\":\"" + String(CART_ID) + "\"}";
+  String resp = httpPost("/api/cart/confirm-payment", body, true);
+  if (resp.length() == 0) return false;
+
+  StaticJsonDocument<1024> doc;
+  if (deserializeJson(doc, resp)) return false;
+  return doc["success"] | false;
+}
+
+// ============================================================
+//  STAFF PIN VERIFY
+// ============================================================
+bool verifyStaffPin(const String& pin) {
+  String body = "{\"pin\":\"" + pin + "\"}";
+  String resp = httpPost("/api/auth/staff-verify", body);
+  if (resp.length() == 0) return false;
+
+  StaticJsonDocument<1024> doc;
+  if (deserializeJson(doc, resp)) return false;
+  return doc["valid"] | false;
+}
+
+// ============================================================
+//  ANTI-THEFT TRIGGER / CLEAR
+// ============================================================
+void notifyBackendAlarm() {
+  String body = "{\"cart_id\":\"" + String(CART_ID) +
+                "\",\"reason\":\"undocked_after_pending\"}";
+  httpPost("/api/cart/anti-theft-trigger", body);
+}
+
+bool clearAntiTheft(const char* action) {
+  String body = "{\"cart_id\":\"" + String(CART_ID) +
+                "\",\"action\":\"" + String(action) + "\"}";
+  String resp = httpPost("/api/cart/anti-theft-clear", body);
+  if (resp.length() == 0) return false;
+
+  StaticJsonDocument<1024> doc;
+  if (deserializeJson(doc, resp)) return false;
+  return doc["success"] | false;
+}
+
+// ============================================================
+//  SYNC
 // ============================================================
 int syncCartState() {
   String body = "{\"cart_id\":\"" + String(CART_ID) + "\"}";
@@ -316,6 +365,8 @@ int syncCartState() {
   if (session.isNull()) return -1;
 
   cartIsDocked  = session["isDocked"] | false;
+  paymentStatus = session["paymentStatus"].as<String>();
+  if (paymentStatus.length() == 0) paymentStatus = "unpaid";
   subtotalCents = session["subtotalCents"] | 0;
   taxCents      = session["taxCents"] | 0;
   totalCents    = session["totalCents"] | 0;
@@ -389,7 +440,7 @@ bool resetCart() {
 }
 
 // ============================================================
-//  WALLET PAY — assumes authToken is valid
+//  WALLET PAY
 // ============================================================
 String walletPay(const String& pin) {
   String body = "{\"cart_id\":\"" + String(CART_ID) +
@@ -397,18 +448,7 @@ String walletPay(const String& pin) {
   return httpPost("/api/wallet/pay", body, true);
 }
 
-// ============================================================
-//  WALLET PAY WITH AUTO-LOGIN
-//  If authToken is empty, first log in with phone+PIN to get one.
-//  Then call /api/wallet/pay.
-//  Returns:
-//    "ok"          = payment succeeded
-//    "wrongpin"    = login failed (bad PIN)
-//    "nofunds"     = login ok but pay failed (insufficient, etc.)
-//    "neterror"    = network/parse
-// ============================================================
 String walletPayWithLogin(const String& pin) {
-  // If no session yet (website mode fallback), log in first
   if (authToken.length() == 0) {
     Serial.println("[Pay] No session — logging in with phone + PIN...");
     if (!login(phoneNumber, pin)) {
@@ -418,7 +458,6 @@ String walletPayWithLogin(const String& pin) {
     Serial.println("[Pay] Login OK — token stored");
   }
 
-  // Now pay
   String resp = walletPay(pin);
   if (resp.length() == 0) return "neterror";
 
@@ -428,7 +467,6 @@ String walletPayWithLogin(const String& pin) {
   bool ok = doc["success"] | false;
   if (ok) return "ok";
 
-  // Payment failed. Could be insufficient funds, wrong PIN, etc.
   const char* err = doc["error"] | "";
   errorMessage = String(err);
   return "nofunds";
@@ -567,7 +605,22 @@ void showScanMode() {
   tft.setCursor(12, 186);
   tft.print("TOTAL");
   tftTextRight(rands(totalCents).c_str(), 228, 192, ST77XX_WHITE, 3);
-  tftHint("Scan item  |  # = cancel");
+
+  if (cartIsDocked) {
+    tft.fillRect(0, 218, 240, 22, ST77XX_NAVY);
+    tft.setTextColor(ST77XX_AMBER);
+    tft.setTextSize(1);
+    tft.setCursor(8, 225);
+    tft.print("Cart docked - scanning disabled");
+  } else if (paymentStatus == "pending") {
+    tft.fillRect(0, 218, 240, 22, ST77XX_AMBER);
+    tft.setTextColor(ST77XX_BLACK);
+    tft.setTextSize(1);
+    tft.setCursor(8, 225);
+    tft.print("Payment ready - dock to unlock");
+  } else {
+    tftHint("Scan item  |  # = cancel");
+  }
 }
 
 void showConfirmCancel() {
@@ -577,13 +630,6 @@ void showConfirmCancel() {
   tftCenter(110, "return to idle?", ST77XX_WHITE, 2);
   tftLine(180, "# = yes, cancel", ST77XX_RED, 1);
   tftLine(196, "* = no, go back", ST77XX_GREEN, 1);
-}
-
-void showCartCleared() {
-  tftClear();
-  tftHeader("Cleared", "");
-  tftCenter(100, "Cart cleared", ST77XX_GREEN, 3);
-  tftCenter(160, "Returning to idle", ST77XX_MUTED, 1);
 }
 
 void showPaymentUnlocked() {
@@ -605,6 +651,68 @@ void showPaymentDone(bool ok, const String& message) {
 }
 
 // ============================================================
+//  ALARM SCREENS
+// ============================================================
+void showAlarmScreen() {
+  tftClear();
+  tft.fillRect(0, 0, 240, 60, ST77XX_RED);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setTextSize(2);
+  tft.setCursor(12, 10);
+  tft.print("ANTI-THEFT");
+  tft.setTextSize(1);
+  tft.setCursor(12, 38);
+  tft.print("ALERT ACTIVE");
+
+  tftCenter(90, "Please wait", ST77XX_WHITE, 3);
+  tftCenter(130, "for staff", ST77XX_WHITE, 3);
+
+  tft.fillRect(0, 180, 240, 40, ST77XX_DARK);
+  tft.setTextColor(ST77XX_AMBER);
+  tft.setTextSize(1);
+  tft.setCursor(12, 190);
+  tft.print("Staff: press 0 to enter PIN");
+}
+
+void showStaffPinEntry() {
+  tftClear();
+  tft.fillRect(0, 0, 240, 44, ST77XX_RED);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setTextSize(2);
+  tft.setCursor(12, 10);
+  tft.print("Staff PIN");
+  tft.setTextSize(1);
+  tft.setCursor(12, 32);
+  tft.print("Anti-theft reset");
+
+  tftLine(60, "Enter staff PIN:", ST77XX_MUTED, 1);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setTextSize(3);
+  tft.setCursor(12, 85);
+  String masked = "";
+  for (unsigned int i = 0; i < typed.length(); i++) masked += "*";
+  tft.print(masked.length() ? masked.c_str() : "_");
+  tftHint("* clear   # OK");
+}
+
+void showStaffChoice() {
+  tftClear();
+  tft.fillRect(0, 0, 240, 60, ST77XX_GREEN);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setTextSize(2);
+  tft.setCursor(12, 10);
+  tft.print("ALARM CLEARED");
+  tft.setTextSize(1);
+  tft.setCursor(12, 38);
+  tft.print("Choose next action");
+
+  tftLine(80, "1 = Continue shopping", ST77XX_WHITE, 2);
+  tftLine(120, "2 = Cancel cart", ST77XX_WHITE, 2);
+
+  tftHint("Press 1 or 2");
+}
+
+// ============================================================
 //  STATE HELPERS
 // ============================================================
 void resetAllState() {
@@ -618,11 +726,27 @@ void resetAllState() {
   taxCents = 0;
   totalCents = 0;
   cartIsDocked = false;
+  lastKnownDocked = false;
   sawActiveSession = false;
   isManualMode = false;
   lastUID = "";
   errorMessage = "";
+  paymentStatus = "unpaid";
   digitalWrite(RED_LED, LOW);
+  if (buzzerOn) {
+    noTone(BUZZER_PIN);
+    buzzerOn = false;
+  }
+}
+
+void triggerAntiTheft() {
+  Serial.println("[ALARM] Anti-theft triggered");
+  currentState = ST_ALARM;
+  stateEnteredAt = millis();
+  typed = "";
+  showAlarmScreen();
+  notifyBackendAlarm();
+  buzzerOn = true;
 }
 
 // ============================================================
@@ -631,11 +755,12 @@ void resetAllState() {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("\n=== SmartCart cart_004 ===");
+  Serial.println("\n=== SmartCart cart_004 (v19) ===");
 
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(RED_LED, OUTPUT);
   digitalWrite(RED_LED, LOW);
+  noTone(BUZZER_PIN);
 
   SPI_TFT.begin(TFT_SCK, -1, TFT_MOSI, TFT_CS);
   tft.init(240, 240, SPI_MODE3);
@@ -670,6 +795,91 @@ void setup() {
 }
 
 // ============================================================
+//  ALARM BUZZER (NON-BLOCKING)
+// ============================================================
+void updateAlarmBuzzer() {
+  if (!buzzerOn) return;
+  unsigned long now = millis();
+  if (now - lastBuzzToggleAt > 500) {
+    lastBuzzToggleAt = now;
+    tone(BUZZER_PIN, 3000, 400);
+  }
+}
+
+// ============================================================
+//  GLOBAL POLL — runs at the END of loop()
+//  Intervals:
+//    ST_SCAN_MODE, ST_PAYMENT_UNLOCKED: every 1 second
+//    ST_PAY_PIN:                        every 5 seconds
+// ============================================================
+void globalPoll() {
+  if (!sawActiveSession) return;
+
+  unsigned long now = millis();
+
+  // Different poll interval depending on state
+  unsigned long interval = 0;
+  if (currentState == ST_SCAN_MODE ||
+      currentState == ST_PAYMENT_UNLOCKED) {
+    interval = 1000;
+  } else if (currentState == ST_PAY_PIN) {
+    interval = 5000;
+  } else {
+    return;
+  }
+
+  if (now - lastPollAt < interval) return;
+  lastPollAt = now;
+
+  int s = syncCartState();
+  if (s == -1) {
+    Serial.println("[Global] Session gone — resetting");
+    resetAllState();
+    currentState = ST_IDLE;
+    stateEnteredAt = now;
+    showIdle();
+    return;
+  }
+
+  bool nowDocked = (s == 1);
+
+  // Anti-theft
+  if (paymentStatus == "pending" && lastKnownDocked && !nowDocked) {
+    Serial.println("[ALARM] Dock→undock while pending → triggering alarm");
+    lastKnownDocked = nowDocked;
+    triggerAntiTheft();
+    return;
+  }
+  lastKnownDocked = nowDocked;
+
+  // Manual auto-confirm
+  if (nowDocked && totalCents > 0 && isManualMode && paymentStatus != "pending") {
+    Serial.println("[Global] Manual mode + docked → auto confirm-payment");
+    if (confirmPayment()) {
+      Serial.println("[Global] confirm-payment sent");
+    } else {
+      Serial.println("[Global] confirm-payment FAILED");
+    }
+  }
+
+  // Unlock
+  if (currentState == ST_SCAN_MODE &&
+      nowDocked && totalCents > 0 && paymentStatus == "pending") {
+    beepSuccess();
+    digitalWrite(RED_LED, HIGH);
+    currentState = ST_PAYMENT_UNLOCKED;
+    stateEnteredAt = now;
+    typed = "";
+    showPaymentUnlocked();
+    return;
+  }
+
+  if (currentState == ST_SCAN_MODE) {
+    showScanMode();
+  }
+}
+
+// ============================================================
 //  MAIN LOOP
 // ============================================================
 void loop() {
@@ -681,6 +891,10 @@ void loop() {
     if (currentState == ST_SCAN_MODE) showScanMode();
   }
 
+  if (currentState == ST_ALARM || currentState == ST_ALARM_PIN) {
+    updateAlarmBuzzer();
+  }
+
   // ---------------- IDLE ----------------
   if (currentState == ST_IDLE) {
     if (key) {
@@ -690,6 +904,7 @@ void loop() {
       stateEnteredAt = now;
       showPhoneEntry();
     }
+    globalPoll();
     return;
   }
 
@@ -706,12 +921,15 @@ void loop() {
           stateEnteredAt = now;
           tftClear();
           tftHeader("Looking up...", "");
+          globalPoll();
+          return;
         }
       } else {
         if (typed.length() < 10) typed += key;
       }
       showPhoneEntry();
     }
+    globalPoll();
     return;
   }
 
@@ -731,6 +949,7 @@ void loop() {
       stateEnteredAt = now;
       showNotRegistered();
     }
+    globalPoll();
     return;
   }
 
@@ -742,6 +961,7 @@ void loop() {
       stateEnteredAt = now;
       showPhoneEntry();
     }
+    globalPoll();
     return;
   }
 
@@ -753,6 +973,7 @@ void loop() {
       stateEnteredAt = now;
       showModeMenu();
     }
+    globalPoll();
     return;
   }
 
@@ -773,6 +994,7 @@ void loop() {
       stateEnteredAt = now;
       showPinEntry("Enter PIN");
     }
+    globalPoll();
     return;
   }
 
@@ -784,11 +1006,13 @@ void loop() {
       if (s == 1 || s == 0) {
         beepSuccess();
         sawActiveSession = true;
+        lastKnownDocked = (s == 1);
         currentState = ST_SCAN_MODE;
         stateEnteredAt = now;
         showScanMode();
       }
     }
+    globalPoll();
     return;
   }
 
@@ -809,9 +1033,13 @@ void loop() {
               syncCartState();
               typed = "";
               sawActiveSession = true;
+              lastKnownDocked = cartIsDocked;
               currentState = ST_SCAN_MODE;
               stateEnteredAt = now;
+              lastPollAt = 0;
               showScanMode();
+              globalPoll();
+              return;
             } else {
               beepError();
               errorMessage = "Pairing failed";
@@ -824,6 +1052,8 @@ void loop() {
               stateEnteredAt = now;
               errorMessage = "";
               showModeMenu();
+              globalPoll();
+              return;
             }
           } else {
             beepError();
@@ -837,6 +1067,8 @@ void loop() {
             stateEnteredAt = now;
             errorMessage = "";
             showPinEntry("Enter PIN");
+            globalPoll();
+            return;
           }
         }
       } else {
@@ -844,6 +1076,7 @@ void loop() {
       }
       showPinEntry("Enter PIN");
     }
+    globalPoll();
     return;
   }
 
@@ -857,9 +1090,11 @@ void loop() {
         currentState = ST_CONFIRM_CANCEL;
         stateEnteredAt = now;
         showConfirmCancel();
+        globalPoll();
         return;
       }
       lastPollAt = now;
+      globalPoll();
       return;
     }
 
@@ -872,6 +1107,15 @@ void loop() {
       uid.toUpperCase();
       Serial.println("UID: " + uid);
       rfid.PICC_HaltA();
+
+      if (cartIsDocked) {
+        beepError();
+        errorShownAt = now;
+        showScanMode();
+        tftError("Cart docked - cannot scan");
+        globalPoll();
+        return;
+      }
 
       if (uid != lastUID || (now - lastUIDAt > 2000)) {
         lastUID = uid;
@@ -887,21 +1131,7 @@ void loop() {
         }
       }
     }
-
-    if (now - lastPollAt > 1000) {
-      lastPollAt = now;
-      int s = syncCartState();
-      if (s == 1) {
-        beepSuccess();
-        digitalWrite(RED_LED, HIGH);
-        currentState = ST_PAYMENT_UNLOCKED;
-        stateEnteredAt = now;
-        typed = "";
-        showPaymentUnlocked();
-      } else {
-        showScanMode();
-      }
-    }
+    globalPoll();
     return;
   }
 
@@ -913,9 +1143,12 @@ void loop() {
         tftClear();
         tftHeader("Clearing cart...", "");
         resetCart();
-        currentState = ST_CART_CLEARED;
+        resetAllState();
+        currentState = ST_IDLE;
         stateEnteredAt = now;
-        showCartCleared();
+        showIdle();
+        globalPoll();
+        return;
       } else if (key == '*') {
         currentState = ST_SCAN_MODE;
         stateEnteredAt = now;
@@ -923,17 +1156,7 @@ void loop() {
         showScanMode();
       }
     }
-    return;
-  }
-
-  // ---------------- CART CLEARED ----------------
-  if (currentState == ST_CART_CLEARED) {
-    if (now - stateEnteredAt > 2000) {
-      resetAllState();
-      currentState = ST_IDLE;
-      stateEnteredAt = now;
-      showIdle();
-    }
+    globalPoll();
     return;
   }
 
@@ -944,6 +1167,7 @@ void loop() {
       currentState = ST_PAY_PIN;
       stateEnteredAt = now;
       showPinEntry("Pay PIN");
+      globalPoll();
       return;
     }
 
@@ -953,31 +1177,21 @@ void loop() {
       currentState = ST_PAY_PIN;
       stateEnteredAt = now;
       showPinEntry("Pay PIN");
+      globalPoll();
       return;
     }
-
-    if (now - lastPollAt > 1500) {
-      lastPollAt = now;
-      int s = syncCartState();
-      if (s == -1 && sawActiveSession) {
-        beepSuccess();
-        currentState = ST_PAYMENT_DONE;
-        stateEnteredAt = now;
-        showPaymentDone(true, "Payment received");
-        digitalWrite(RED_LED, LOW);
-        return;
-      }
-    }
+    globalPoll();
     return;
   }
 
-  // ---------------- PAY PIN (unified for both modes) ----------------
+  // ---------------- PAY PIN ----------------
   if (currentState == ST_PAY_PIN) {
     if (key) {
       beep();
       if (key == '*') {
         typed = "";
         showPinEntry("Pay PIN");
+        globalPoll();
         return;
       }
       if (key == '0' && typed.length() == 0) {
@@ -986,6 +1200,7 @@ void loop() {
         stateEnteredAt = now;
         lastPollAt = now;
         showPaymentUnlocked();
+        globalPoll();
         return;
       }
       if (key == '#') {
@@ -1000,6 +1215,8 @@ void loop() {
             stateEnteredAt = now;
             showPaymentDone(true, "Wallet debited");
             digitalWrite(RED_LED, LOW);
+            globalPoll();
+            return;
           } else if (result == "wrongpin") {
             beepError();
             errorMessage = "Wrong PIN";
@@ -1009,6 +1226,8 @@ void loop() {
             delay(2000);
             errorMessage = "";
             showPinEntry("Pay PIN");
+            globalPoll();
+            return;
           } else {
             beepError();
             if (errorMessage.length() == 0) errorMessage = "Payment failed";
@@ -1018,13 +1237,17 @@ void loop() {
             delay(2000);
             errorMessage = "";
             showPinEntry("Pay PIN");
+            globalPoll();
+            return;
           }
         }
+        globalPoll();
         return;
       }
       if (typed.length() < 6) typed += key;
       showPinEntry("Pay PIN");
     }
+    globalPoll();
     return;
   }
 
@@ -1036,6 +1259,100 @@ void loop() {
       stateEnteredAt = now;
       showIdle();
     }
+    globalPoll();
     return;
   }
+
+  // ---------------- ALARM ----------------
+  if (currentState == ST_ALARM) {
+    if (key == '0') {
+      beep();
+      typed = "";
+      currentState = ST_ALARM_PIN;
+      stateEnteredAt = now;
+      showStaffPinEntry();
+      globalPoll();
+      return;
+    }
+    globalPoll();
+    return;
+  }
+
+  // ---------------- ALARM PIN ----------------
+  if (currentState == ST_ALARM_PIN) {
+    if (key) {
+      beep();
+      if (key == '*') {
+        typed = "";
+        showStaffPinEntry();
+        globalPoll();
+        return;
+      }
+      if (key == '#') {
+        if (typed.length() >= 4) {
+          tftClear();
+          tftHeader("Verifying...", "");
+          if (verifyStaffPin(typed)) {
+            Serial.println("[ALARM] Staff PIN correct");
+            noTone(BUZZER_PIN);
+            buzzerOn = false;
+            typed = "";
+            currentState = ST_ALARM_CHOICE;
+            stateEnteredAt = now;
+            beepSuccess();
+            showStaffChoice();
+            globalPoll();
+            return;
+          } else {
+            beepError();
+            typed = "";
+            showStaffPinEntry();
+            tftError("Wrong staff PIN");
+            delay(1500);
+            showStaffPinEntry();
+            globalPoll();
+            return;
+          }
+        }
+        globalPoll();
+        return;
+      }
+      if (typed.length() < 6) typed += key;
+      showStaffPinEntry();
+    }
+    globalPoll();
+    return;
+  }
+
+  // ---------------- ALARM CHOICE ----------------
+  if (currentState == ST_ALARM_CHOICE) {
+    if (key == '1') {
+      beep();
+      Serial.println("[ALARM] Staff chose: continue");
+      clearAntiTheft("continue");
+      syncCartState();
+      typed = "";
+      currentState = ST_SCAN_MODE;
+      stateEnteredAt = now;
+      lastPollAt = 0;
+      lastKnownDocked = false;
+      showScanMode();
+      globalPoll();
+      return;
+    } else if (key == '2') {
+      beep();
+      Serial.println("[ALARM] Staff chose: cancel");
+      clearAntiTheft("cancel");
+      resetAllState();
+      currentState = ST_IDLE;
+      stateEnteredAt = now;
+      showIdle();
+      globalPoll();
+      return;
+    }
+    globalPoll(); 
+    return;
+  }
+
+  globalPoll();
 }

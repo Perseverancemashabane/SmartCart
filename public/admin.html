@@ -120,6 +120,26 @@
     }
     .btn-logout:hover { background: rgba(248,113,113,0.25); }
 
+    /* Revenue Dashboard */
+    .revenue-dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      padding: 20px 24px 0 24px;
+    }
+    .rev-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+    .rev-card h3 { font-size: 0.85rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px; }
+    .rev-card p { font-size: 1.8rem; font-weight: 700; }
+    .rev-day { color: #10b981; }
+    .rev-month { color: #3b82f6; }
+    .rev-year { color: #8b5cf6; }
+
     /* Tabs */
     .tabs {
       display: flex;
@@ -369,6 +389,24 @@
       margin-top: 24px;
     }
     .modal-actions button { flex: 1; padding: 12px; }
+    
+    /* History Modal Specifics */
+    .history-trip {
+      border-bottom: 1px solid #334155;
+      padding: 12px 0;
+    }
+    .history-trip-header {
+      display: flex;
+      justify-content: space-between;
+      font-weight: bold;
+      color: #60a5fa;
+      margin-bottom: 6px;
+    }
+    .history-items {
+      margin-left: 20px;
+      color: #cbd5e1;
+      font-size: 0.85rem;
+    }
   </style>
 </head>
 <body>
@@ -404,11 +442,28 @@
       </div>
     </div>
 
+    <!-- REVENUE DASHBOARD -->
+    <div class="revenue-dashboard">
+      <div class="rev-card">
+        <h3>Revenue Today</h3>
+        <p class="rev-day" id="rev-day">R 0.00</p>
+      </div>
+      <div class="rev-card">
+        <h3>Revenue This Month</h3>
+        <p class="rev-month" id="rev-month">R 0.00</p>
+      </div>
+      <div class="rev-card">
+        <h3>Revenue This Year</h3>
+        <p class="rev-year" id="rev-year">R 0.00</p>
+      </div>
+    </div>
+
     <div class="tabs">
       <div class="tab active" data-tab="alerts">Alerts</div>
       <div class="tab" data-tab="products">Products</div>
       <div class="tab" data-tab="staff">Staff</div>
       <div class="tab" data-tab="transactions">Transactions</div>
+      <div class="tab" data-tab="customers">Customers</div>
     </div>
 
     <div class="content">
@@ -498,6 +553,30 @@
         </table>
       </div>
 
+      <!-- CUSTOMERS PANEL -->
+      <div class="panel" id="panel-customers">
+        <div class="panel-header">
+          <div>
+            <h2>Customer History</h2>
+            <div class="panel-sub">Search a customer to view their past shopping trips.</div>
+          </div>
+          <button class="btn btn-ghost" id="reload-customers-btn">Reload</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th class="col-id">ID</th>
+              <th class="col-name">Name</th>
+              <th style="width: 150px;">Phone</th>
+              <th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="customers-tbody">
+            <tr><td colspan="4" class="empty">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
     </div>
   </div>
 
@@ -550,8 +629,20 @@
     </div>
   </div>
 
+  <!-- CUSTOMER HISTORY MODAL -->
+  <div class="modal-backdrop" id="modal-history">
+    <div class="modal" style="max-width: 600px;">
+      <h3 id="history-title">Customer History</h3>
+      <div class="modal-sub" id="history-sub">Loading...</div>
+      <div id="history-content" style="margin-top: 16px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="close-history-modal">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toasts" id="toasts"></div>
 
-  <script src="admin.js?v=2"></script>
+  <script src="admin.js?v=3"></script>
 </body>
 </html>

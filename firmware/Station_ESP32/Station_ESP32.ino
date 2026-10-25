@@ -1,17 +1,12 @@
 /*
- * SmartCart IoT - Base Station ESP32 Firmware
- * -------------------------------------------
- * Hardware:
- *   - ESP32 Development Board (separate from the cart)
- *   - MFRC522 RFID Reader (SPI Interface)
- *   - Green LED (Ready/Docked)
- *   - Red LED (Error/Roaming)
- *   - No buzzer
- *
- * Functionality:
- *   1. Continuously scans for the cart's station tag.
- *   2. When detected, POSTs to /api/hardware/station-dock.
- *   3. Visual feedback via LEDs.
+ * ============================================================
+ *  SmartCart IoT - Base Station ESP32 Firmware  (v3)
+ * ============================================================
+ *  - Continuously monitors the cart's station tag (no halt)
+ *  - Tag present → POST station-dock (once)
+ *  - Tag absent for 5s → POST station-undock
+ *  - LEDs show state
+ * ============================================================
  */
 
 #include <WiFi.h>
@@ -21,23 +16,15 @@
 #include <MFRC522.h>
 #include <ArduinoJson.h>
 
-// ============================
-// WI-FI CREDENTIALS
-// ============================
 const char* ssid = "TECNO SPARK Go 2";
 const char* password = "vddh30npbm211912";
 
-// ============================
-// API ENDPOINT
-// ============================
-const char* API_ENDPOINT = "https://smart-cart-5qod.vercel.app/api/hardware/station-dock";
-const char* STATION_ID = "STATION_BASE_01";
-const char* PHYSICAL_TAG = "27E5F505";   // The physical tag on the cart handle
-const char* CART_ID = "cart_004";        // The cart's database ID (lowercase!)
+const char* DOCK_ENDPOINT   = "https://smart-cart-5qod.vercel.app/api/hardware/station-dock";
+const char* UNDOCK_ENDPOINT = "https://smart-cart-5qod.vercel.app/api/hardware/station-undock";
+const char* STATION_ID      = "STATION_BASE_01";
+const char* PHYSICAL_TAG    = "27E5F505";
+const char* CART_ID         = "cart_004";
 
-// ============================
-// PIN CONFIGURATIONS
-// ============================
 #define SS_PIN       5
 #define RST_PIN      22
 #define GREEN_LED    26
@@ -45,54 +32,34 @@ const char* CART_ID = "cart_004";        // The cart's database ID (lowercase!)
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
-// ============================
-// STATE
-// ============================
-String lastScannedTag = "";
-unsigned long lastScanTime = 0;
-const unsigned long DEBOUNCE_DELAY_MS = 5000; // 5 seconds between dock events
+bool cartIsHere = false;
+unsigned long lastSeenAt = 0;
+const unsigned long UNDOCK_TIMEOUT_MS = 5000;
+const unsigned long POLL_INTERVAL_MS  = 300;
 
-// ============================
-// HELPER FUNCTIONS
-// ============================
-
-void setGreen() {
-  digitalWrite(GREEN_LED, HIGH);
-  digitalWrite(RED_LED, LOW);
-}
-
-void setRed() {
-  digitalWrite(GREEN_LED, LOW);
-  digitalWrite(RED_LED, HIGH);
-}
+void setGreen() { digitalWrite(GREEN_LED, HIGH); digitalWrite(RED_LED, LOW); }
+void setRed()   { digitalWrite(GREEN_LED, LOW);  digitalWrite(RED_LED, HIGH); }
 
 void flashGreen(int times) {
   for (int i = 0; i < times; i++) {
-    digitalWrite(GREEN_LED, HIGH);
-    delay(150);
-    digitalWrite(GREEN_LED, LOW);
-    delay(150);
+    digitalWrite(GREEN_LED, HIGH); delay(150);
+    digitalWrite(GREEN_LED, LOW);  delay(150);
   }
 }
 
 void flashRed(int times) {
   for (int i = 0; i < times; i++) {
-    digitalWrite(RED_LED, HIGH);
-    delay(150);
-    digitalWrite(RED_LED, LOW);
-    delay(150);
+    digitalWrite(RED_LED, HIGH); delay(150);
+    digitalWrite(RED_LED, LOW);  delay(150);
   }
 }
 
 void connectToWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
-
   Serial.print("Connecting to Wi-Fi: ");
   Serial.println(ssid);
-
   digitalWrite(RED_LED, LOW);
   WiFi.begin(ssid, password);
-
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 40) {
     delay(500);
@@ -100,29 +67,28 @@ void connectToWiFi() {
     digitalWrite(GREEN_LED, !digitalRead(GREEN_LED));
     attempts++;
   }
-
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\nWi-Fi Connected!");
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
-    setGreen();
+    setRed();
   } else {
     Serial.println("\nWi-Fi Connection Failed.");
     setRed();
   }
 }
 
-void sendDockEvent() {
+int postEvent(const char* endpoint, const char* label) {
   if (WiFi.status() != WL_CONNECTED) {
     connectToWiFi();
-    if (WiFi.status() != WL_CONNECTED) return;
+    if (WiFi.status() != WL_CONNECTED) return -1;
   }
 
   WiFiClientSecure client;
   client.setInsecure();
 
   HTTPClient http;
-  http.begin(client, API_ENDPOINT);
+  http.begin(client, endpoint);
   http.addHeader("Content-Type", "application/json");
   http.setTimeout(8000);
 
@@ -133,108 +99,108 @@ void sendDockEvent() {
   String requestBody;
   serializeJson(doc, requestBody);
 
-  Serial.println("[HTTP] Sending dock event...");
+  Serial.print("[HTTP] Sending ");
+  Serial.print(label);
+  Serial.println(" event...");
   Serial.println(requestBody);
 
-  int httpResponseCode = http.POST(requestBody);
-
-  if (httpResponseCode > 0) {
+  int code = http.POST(requestBody);
+  if (code > 0) {
     String response = http.getString();
     Serial.print("[HTTP] Code: ");
-    Serial.println(httpResponseCode);
+    Serial.println(code);
     Serial.print("[HTTP] Response: ");
     Serial.println(response);
-
-    if (httpResponseCode == 200) {
-      flashGreen(5);
-      setGreen();
-    } else {
-      flashRed(3);
-      setGreen();
-    }
   } else {
     Serial.print("[HTTP] Error Code: ");
-    Serial.println(httpResponseCode);
-    flashRed(5);
-    setGreen();
+    Serial.println(code);
   }
-
   http.end();
+  return code;
 }
 
-// ============================
-// SETUP
-// ============================
+// ============================================================
+//  TAG READER
+//  Returns true if the physical cart tag is present.
+//  Does NOT halt the PICC, so the reader keeps seeing the tag.
+// ============================================================
+bool isCartTagPresent() {
+  byte bufferATQA[2];
+  byte bufferSize = sizeof(bufferATQA);
+
+  MFRC522::StatusCode status = mfrc522.PICC_RequestA(bufferATQA, &bufferSize);
+  if (status != MFRC522::STATUS_OK) return false;
+
+  if (!mfrc522.PICC_ReadCardSerial()) return false;
+
+  String tag = "";
+  for (byte i = 0; i < mfrc522.uid.size; i++) {
+    tag += String(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "");
+    tag += String(mfrc522.uid.uidByte[i], HEX);
+  }
+  tag.toUpperCase();
+
+  return (tag == PHYSICAL_TAG);
+}
+
 void setup() {
   Serial.begin(115200);
   delay(500);
-
-  Serial.println("\n\n=== SmartCart STATION ===");
+  Serial.println("\n\n=== SmartCart STATION v3 ===");
 
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RED_LED, OUTPUT);
-
   digitalWrite(GREEN_LED, LOW);
   digitalWrite(RED_LED, LOW);
 
-  // Boot flash
   flashGreen(3);
   flashRed(3);
 
-  // Init RFID
   SPI.begin();
   mfrc522.PCD_Init();
   Serial.println("MFRC522 RFID Reader Initialized.");
 
-  // Connect WiFi
   connectToWiFi();
+  lastSeenAt = millis();
 
   Serial.println("Station Ready. Waiting for cart...");
 }
 
-// ============================
-// LOOP
-// ============================
 void loop() {
-  if (WiFi.status() != WL_CONNECTED) {
-    connectToWiFi();
-  }
-
-  if (!mfrc522.PICC_IsNewCardPresent()) {
-    delay(50);
-    return;
-  }
-
-  if (!mfrc522.PICC_ReadCardSerial()) {
-    delay(50);
-    return;
-  }
-
-  String currentTag = "";
-  for (byte i = 0; i < mfrc522.uid.size; i++) {
-    currentTag += String(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "");
-    currentTag += String(mfrc522.uid.uidByte[i], HEX);
-  }
-  currentTag.toUpperCase();
-
-  Serial.print(">>> Tag detected: ");
-  Serial.println(currentTag);
+  if (WiFi.status() != WL_CONNECTED) connectToWiFi();
 
   unsigned long now = millis();
 
-  // Only respond to the cart's station tag
-  if (currentTag == PHYSICAL_TAG && (currentTag != lastScannedTag || (now - lastScanTime) > DEBOUNCE_DELAY_MS)) {
-    Serial.println("Cart detected! Sending dock event...");
-    lastScannedTag = currentTag;
-    lastScanTime = now;
+  bool tagPresent = isCartTagPresent();
 
-    sendDockEvent();
-  } else if (currentTag != PHYSICAL_TAG) {
-    Serial.println("Unknown tag — ignoring.");
+  if (tagPresent) {
+    lastSeenAt = now;
+    if (!cartIsHere) {
+      Serial.println(">>> Cart tag detected. Docking...");
+      int code = postEvent(DOCK_ENDPOINT, "dock");
+      if (code == 200) {
+        cartIsHere = true;
+        flashGreen(5);
+        setGreen();
+      } else {
+        flashRed(3);
+        setRed();
+      }
+    }
+  } else {
+    if (cartIsHere && (now - lastSeenAt > UNDOCK_TIMEOUT_MS)) {
+      Serial.println(">>> Cart tag lost. Undocking...");
+      int code = postEvent(UNDOCK_ENDPOINT, "undock");
+      cartIsHere = false;
+      if (code == 200) {
+        flashRed(5);
+      } else {
+        flashRed(3);
+      }
+      setRed();
+    }
   }
 
-  mfrc522.PICC_HaltA();
-  mfrc522.PCD_StopCrypto1();
-
-  delay(1500);
+  // NOTE: no halt, no StopCrypto1 — we want to keep reading the tag
+  delay(POLL_INTERVAL_MS);
 }

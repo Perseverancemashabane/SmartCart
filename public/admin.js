@@ -1,5 +1,5 @@
 /**
- * SmartCart Admin — Frontend Logic (v4)
+ * SmartCart Admin — Frontend Logic (v5)
  */
 
 const API = window.location.origin;
@@ -146,7 +146,7 @@ function enterAdmin() {
   document.getElementById('staff-badge').textContent = staffName;
   switchTab('alerts');
   loadAlerts();
-  loadRevenue(); // Load Revenue on login
+  loadRevenue();
 }
 
 // ============================================================
@@ -246,9 +246,7 @@ async function openHistoryModal(customerId, customerName) {
           </div>
           <div class="history-items">
             <ul>
-              ${trip.items && trip.items.length > 0 
-                ? trip.items.map(i => `<li>${i.quantity}x ${escapeHtml(i.product ? i.product.name : 'Unknown')}</li>`).join('') 
-                : '<li>No items recorded</li>'}
+              ${trip.items.map(i => `<li>${i.quantity}x ${escapeHtml(i.name)}</li>`).join('')}
             </ul>
           </div>
         </div>

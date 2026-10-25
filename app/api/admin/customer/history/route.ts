@@ -14,7 +14,6 @@ export async function GET(req: NextRequest) {
   if (!customerId) return NextResponse.json({ error: "Missing customerId" }, { status: 400 });
 
   try {
-    // 1. Fetch transactions for this specific customer
     const transactions = await (prisma as any).transaction.findMany({
       where: { 
         session: { customerId: parseInt(customerId) } 
@@ -26,19 +25,35 @@ export async function GET(req: NextRequest) {
           }
         }
       },
-      orderBy: { createdAt: "desc" }, // Most recent first
-      take: 10 // Only the last 10
+      orderBy: { createdAt: "desc" },
+      take: 10 
     });
 
-    // 2. Format them so the frontend can read them easily
-    const history = transactions.map((t: any) => ({
-      id: t.id,
-      date: t.createdAt,
-      totalCents: t.amountCents,
-      items: t.session.items
-    }));
+    // Format and group items
+    const history = transactions.map((t: any) => {
+      const groupedItems: any = {};
+      
+      // Group items by product name and sum the quantities
+      t.session.items.forEach((item: any) => {
+        const name = item.product ? item.product.name : "Unknown";
+        if (!groupedItems[name]) {
+          groupedItems[name] = { name, quantity: 0 };
+        }
+        groupedItems[name].quantity += item.quantity;
+      });
 
-    return NextResponse.json({ success: true, history });
+      return {
+        id: t.id,
+        date: t.createdAt,
+        totalCents: t.amountCents,
+        items: Object.values(groupedItems)
+      };
+    });
+
+    // Filter out any transactions that somehow have 0 items
+    const validHistory = history.filter((h: any) => h.items.length > 0);
+
+    return NextResponse.json({ success: true, history: validHistory });
   } catch (err: any) {
     console.error("[customer/history] failed:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { getSessionFromCookies } from "@/lib/auth"; // Uses your existing auth helper
+import { getSessionFromCookies } from "@/lib/auth";
 
 export const runtime = "nodejs";
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
@@ -15,28 +15,29 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 2. Fetch their transactions
-    const transactions = await (prisma as any).transaction.findMany({
+    // 2. Fetch successful sessions from the CartSession table
+    const sessions = await (prisma as any).cartSession.findMany({
       where: { 
-        session: { customerId: customer.id } 
+        customerId: customer.id,
+        OR: [
+          { paymentStatus: "paid" },
+          { paymentStatus: "completed" },
+          { paymentStatus: "success" }
+        ]
       },
       include: {
-        session: {
-          include: {
-            items: { include: { product: true } }
-          }
-        }
+        items: { include: { product: true } },
       },
       orderBy: { createdAt: "desc" },
-      take: 20 // Show last 20 trips
+      take: 20 
     });
 
-    // 3. Group duplicate items and format the response
-    const history = transactions.map((t: any) => {
+    // 3. Format and group items (so two tags of Milk become 2x Milk)
+    const history = sessions.map((s: any) => {
       const groupedItems: any = {};
       
-      t.session.items.forEach((item: any) => {
-        const name = item.product ? item.product.name : "Unknown";
+      s.items.forEach((item: any) => {
+        const name = item.product ? item.product.name : "Unknown Item";
         if (!groupedItems[name]) {
           groupedItems[name] = { name, quantity: 0 };
         }
@@ -44,18 +45,19 @@ export async function GET(req: NextRequest) {
       });
 
       return {
-        id: t.id,
-        date: t.createdAt,
-        totalCents: t.amountCents,
+        id: s.id,
+        date: s.createdAt || new Date(),
+        totalCents: s.totalCents || 0,
         items: Object.values(groupedItems)
       };
     });
 
-    // Filter out any empty transactions
+    // Filter out empty ones (just in case)
     const validHistory = history.filter((h: any) => h.items.length > 0);
 
     return NextResponse.json({ success: true, history: validHistory });
   } catch (err: any) {
+    console.error("[my-history] error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

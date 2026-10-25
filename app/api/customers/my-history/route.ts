@@ -4,17 +4,23 @@ import { getSessionFromCookies } from '@/lib/auth';
 
 export async function GET(request: Request) {
   try {
-    // 1. Get the session using the exact same method as your working routes
     const session = await getSessionFromCookies(request.headers.get('cookie'));
 
     if (!session || !session.customerId) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    // 2. Fetch the sessions for this customer
+    // Fetch ONLY successful sessions
     const sessions = await prisma.cartSession.findMany({
       where: { 
-        customerId: session.customerId 
+        customerId: session.customerId,
+        // Only grab trips that were actually paid for
+        OR: [
+          { paymentStatus: "paid" },
+          { paymentStatus: "completed" },
+          { paymentStatus: "success" }
+        ],
+        totalCents: { gt: 0 } // And make sure the total is greater than 0
       },
       include: {
         items: {
@@ -25,7 +31,6 @@ export async function GET(request: Request) {
       take: 20 
     });
 
-    // 3. Format the data
     const history = sessions.map((s: any) => {
       const groupedItems: any = {};
       

@@ -16,13 +16,18 @@ export async function GET(req: NextRequest) {
   try {
     const sessions = await (prisma as any).cartSession.findMany({
       where: { 
-        customerId: parseInt(customerId) 
+        customerId: parseInt(customerId),
+        // ONLY fetch successful payments
+        OR: [
+          { paymentStatus: "paid" },
+          { paymentStatus: "completed" }
+        ]
       },
       include: {
         items: { include: { product: true } },
       },
       orderBy: { id: "desc" },
-      take: 10 
+      take: 10 // Only get the most recent 10
     });
 
     return NextResponse.json({ success: true, history: sessions });

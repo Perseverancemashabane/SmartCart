@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="style.css">
   <style>
+    body { background: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     .history-container { max-width: 600px; margin: 0 auto; padding: 20px; }
     .back-btn { display: inline-flex; align-items: center; gap: 8px; color: #93c5fd; text-decoration: none; margin-bottom: 20px; font-weight: 600; }
     .history-card { background: #1e293b; border-radius: 16px; padding: 20px; margin-bottom: 16px; border: 1px solid #334155; }
@@ -38,25 +39,46 @@
         const data = await res.json();
 
         if (data.success && data.history.length > 0) {
-          container.innerHTML = data.history.map(trip => `
-            <div class="history-card">
-              <div class="history-header">
-                <span class="history-date">${new Date(trip.date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                <span class="history-total">R ${(trip.totalCents / 100).toFixed(2)}</span>
-              </div>
-              <div>
-                ${trip.items.map(i => `
+          container.innerHTML = data.history.map(trip => {
+            // Safely format the date (this prevents the .split() crash)
+            let dateStr = "Unknown Date";
+            if (trip.date) {
+              try {
+                dateStr = new Date(trip.date).toLocaleDateString('en-ZA', { 
+                  year: 'numeric', month: 'short', day: 'numeric', 
+                  hour: '2-digit', minute: '2-digit' 
+                });
+              } catch (e) {
+                dateStr = String(trip.date);
+              }
+            }
+
+            // If the backend didn't send items yet, show a placeholder
+            const itemsHtml = (trip.items && trip.items.length > 0) 
+              ? trip.items.map(i => `
                   <div class="history-item">
                     <span>${i.quantity}x ${i.name}</span>
                   </div>
-                `).join('')}
+                `).join('')
+              : '<div class="history-item" style="color:#64748b;"><em>Items not recorded for this trip</em></div>';
+
+            return `
+              <div class="history-card">
+                <div class="history-header">
+                  <span class="history-date">${dateStr}</span>
+                  <span class="history-total">R ${(trip.totalCents / 100).toFixed(2)}</span>
+                </div>
+                <div>
+                  ${itemsHtml}
+                </div>
               </div>
-            </div>
-          `).join('');
+            `;
+          }).join('');
         } else {
           container.innerHTML = '<div class="loading">You have no past purchases yet.</div>';
         }
       } catch (err) {
+        console.error(err);
         container.innerHTML = '<div class="loading" style="color: #f87171;">Failed to load history.</div>';
       }
     }

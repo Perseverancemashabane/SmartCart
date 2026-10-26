@@ -39,37 +39,42 @@ export async function POST(req: NextRequest) {
       include: { items: true }
     });
 
-    if (!session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    // 3. Mark as PAID and CLOSE the session
+    if (session) {
+      await (prisma as any).cartSession.update({
+        where: { id: session.id },
+        data: { 
+          paymentStatus: "paid",
+          isActive: false,
+          closedAt: new Date()
+        }
+      });
     }
 
-    // 3. Mark as PAID and CLOSE the session immediately
-    await (prisma as any).cartSession.update({
-      where: { id: session.id },
-      data: { 
-        paymentStatus: "paid",
-        isActive: false, // <--- THIS is what makes the frontend reset
-        closedAt: new Date()
-      }
+    // 4. Use UPSERT so it doesn't crash if the webhook/redirect fires twice
+    const existingTransaction = await (prisma as any).transaction.findFirst({
+      where: { stripePaymentIntentId: reference }
     });
 
-    // 4. Create the Transaction record
-    await (prisma as any).transaction.create({
-      data: {
-        sessionId: session.id,
-        stripePaymentIntentId: reference,
-        amountCents: paystackData.data.amount,
-        currency: "ZAR",
-        status: "completed",
-      }
-    });
+    if (!existingTransaction) {
+      await (prisma as any).transaction.create({
+        data: {
+          sessionId: session ? session.id : 0, 
+          stripePaymentIntentId: reference, 
+          amountCents: paystackData.data.amount,
+          currency: "ZAR",
+          status: "completed",
+        }
+      });
+    }
 
     return NextResponse.json({ 
       success: true, 
       amountRands: (paystackData.data.amount / 100).toFixed(2) 
     });
+
   } catch (err: any) {
     console.error("[checkout/verify] failed:", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json({ error: String(err), detail: err.message }, { status: 500 });
   }
 }

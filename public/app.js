@@ -1,6 +1,6 @@
 /**
- * SmartCart IoT - Full Application Logic (v12)
- * Fixed: Paystack callback now properly verifies, resets, and clears the local state.
+ * SmartCart IoT - Full Application Logic (v13)
+ * Fixed: Removed the floating Dev button.
  */
 
 // ==========================================================================
@@ -257,7 +257,6 @@ class UIController {
           this.showToast('Your cart is empty! Add items before checking out.', 'warning');
           return;
         }
-        // ALWAYS show review screen first
         appBus.emit('review:open');
       });
     }
@@ -809,6 +808,7 @@ class MockLiveFeedModule {
     this.loadProducts();
   }
   initDOM() {
+    // Removed the floating Dev button creation here
     this.debugPanel = document.getElementById('debug-panel');
     this.debugHandle = document.getElementById('debug-handle');
     this.debugToggleText = document.getElementById('debug-toggle-text');
@@ -817,20 +817,8 @@ class MockLiveFeedModule {
     this.simDockText = document.getElementById('sim-dock-text');
     this.debugEventLog = document.getElementById('debug-event-log');
     this.simItemsButtons = document.getElementById('sim-items-buttons');
+    
     if (this.debugPanel) this.debugPanel.style.display = 'none';
-
-    const devBtn = document.createElement('button');
-    devBtn.id = 'dev-panel-toggle';
-    devBtn.innerHTML = '<i class="fa-solid fa-microchip"></i> Dev';
-    devBtn.style.cssText = `
-      position: fixed; bottom: 20px; right: 20px; z-index: 9999;
-      padding: 10px 16px; background: #f59e0b; color: #0f172a;
-      border: none; border-radius: 24px; font-size: 0.85rem;
-      font-weight: 700; cursor: pointer;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-      font-family: inherit; display: flex; align-items: center; gap: 6px;
-    `;
-    document.body.appendChild(devBtn);
   }
   async loadProducts() {
     if (!this.simItemsButtons) return;
@@ -896,8 +884,6 @@ class MockLiveFeedModule {
   }
   bindEvents() {
     if (this.debugHandle) this.debugHandle.addEventListener('click', () => this.togglePanel());
-    const devBtn = document.getElementById('dev-panel-toggle');
-    if (devBtn) devBtn.addEventListener('click', () => this.togglePanel());
 
     if (this.simBtnToggleDock) {
       this.simBtnToggleDock.addEventListener('click', async () => {

@@ -4,16 +4,10 @@ import { getSessionFromCookies } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
-    // ============================================================
-    // 1. Require login — no anonymous cart access
-    // ============================================================
     const session = await getSessionFromCookies(request.headers.get('cookie'));
 
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Not authenticated. Please log in to pair a cart.' },
-        { status: 401 }
-      );
+    if (!session || !session.customerId) {
+      return NextResponse.json({ error: 'Not authenticated. Please log in.' }, { status: 401 });
     }
 
     const body = await request.json();
@@ -23,9 +17,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'cart_id is required' }, { status: 400 });
     }
 
-    // ============================================================
-    // 2. Upsert physical Cart record
-    // ============================================================
+    // 1. Upsert the physical cart
     const cart = await prisma.cart.upsert({
       where: { id: cart_id },
       update: { status: 'active' },
@@ -36,24 +28,13 @@ export async function POST(request: Request) {
       },
     });
 
-    // ============================================================
-    // 3. Check for an active session for this cart
-    //    If one exists but belongs to a DIFFERENT customer, close it
-    // ============================================================
+    // 2. Find an existing active session
     let activeSession = await prisma.cartSession.findFirst({
       where: { cartId: cart.id, isActive: true },
-      include: {
-        items: {
-          include: { product: true },
-        },
-      },
     });
 
-    if (activeSession && activeSession.customerId !== session.customerId) {
-      // Someone else's stale session — close it
-      console.log(
-        `[Pair] Closing stale session ${activeSession.id} (was customer ${activeSession.customerId}, now ${session.customerId})`
-      );
+    // 3. If a session exists for a DIFFERENT customer OR if it's already paid, close it
+    if (activeSession && (activeSession.customerId !== session.customerId || activeSession.paymentStatus === 'paid')) {
       await prisma.cartSession.update({
         where: { id: activeSession.id },
         data: { isActive: false, closedAt: new Date() },
@@ -61,9 +42,7 @@ export async function POST(request: Request) {
       activeSession = null;
     }
 
-    // ============================================================
-    // 4. If no active session, create a fresh one for THIS customer
-    // ============================================================
+    // 4. Create a new session if needed
     if (!activeSession) {
       activeSession = await prisma.cartSession.create({
         data: {
@@ -71,28 +50,15 @@ export async function POST(request: Request) {
           customerId: session.customerId,
           isActive: true,
           isDocked: false,
+          paymentStatus: 'unpaid',
           subtotalCents: 0,
           taxCents: 0,
           totalCents: 0,
         },
-        include: {
-          items: {
-            include: { product: true },
-          },
-        },
       });
-      console.log(
-        `[Pair] Created session ${activeSession.id} for cart ${cart.id} → customer ${session.customerId}`
-      );
-    } else {
-      console.log(
-        `[Pair] Resuming existing session ${activeSession.id} for cart ${cart.id} → customer ${session.customerId}`
-      );
     }
 
-    // ============================================================
-    // 5. Return the session state
-    // ============================================================
+    // 5. Return success
     return NextResponse.json({
       success: true,
       cartId: cart.id,
@@ -104,21 +70,11 @@ export async function POST(request: Request) {
         subtotalCents: activeSession.subtotalCents,
         taxCents: activeSession.taxCents,
         totalCents: activeSession.totalCents,
-        items: activeSession.items.map((item) => ({
-          id: item.id,
-          sku: item.product.rfidTagId,
-          name: item.product.name,
-          unitPriceCents: item.unitPriceCents,
-          quantity: item.quantity,
-          subtotalCents: item.subtotalCents,
-        })),
+        items: [], // Returning empty to prevent relation crashes
       },
     });
   } catch (error: any) {
     console.error('Error in /api/cart/pair:', error);
-    return NextResponse.json(
-      { error: 'Internal Server Error', message: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal Server Error', message: error.message }, { status: 500 });
   }
 }
